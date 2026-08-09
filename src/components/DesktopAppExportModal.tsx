@@ -75,12 +75,10 @@ app.on('window-all-closed', () => {
 
   const winBatScript = `@echo off
 echo ====================================================
-echo Building PAIOS Desktop Windows (.exe) Installer...
+echo Building PAIOS Desktop Windows (.exe) Application...
 echo ====================================================
-set CSC_IDENTITY_AUTO_DISCOVERY=false
-npm run build
-npx electron-builder --win dir --config.forceCodeSigning=false
-echo Built executable located in /dist-electron/win-unpacked/PAIOS Desktop.exe!
+npm run build:exe
+echo Built executable located in /dist-electron/PAIOS Desktop-win32-x64/PAIOS Desktop.exe!
 pause`;
 
   const handleCopy = (text: string, label: string) => {
