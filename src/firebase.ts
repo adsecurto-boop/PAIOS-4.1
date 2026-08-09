@@ -29,15 +29,26 @@ export const googleProvider = new GoogleAuthProvider();
 
 // Google SSO Sign In with Popup & Redirect Fallback
 export async function signInWithGoogle(): Promise<User> {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (error: any) {
+    if (error?.code === 'auth/unauthorized-domain' || error?.message?.includes('auth/unauthorized-domain')) {
+      throw new Error(
+        `UNAUTHORIZED_DOMAIN|${hostname}`
+      );
+    }
     console.warn('Popup sign in failed or blocked, attempting redirect sign in:', error);
     try {
       await signInWithRedirect(auth, googleProvider);
       throw new Error('Redirecting to Google Sign-In...');
-    } catch (redirectErr) {
+    } catch (redirectErr: any) {
+      if (redirectErr?.code === 'auth/unauthorized-domain' || redirectErr?.message?.includes('auth/unauthorized-domain')) {
+        throw new Error(
+          `UNAUTHORIZED_DOMAIN|${hostname}`
+        );
+      }
       console.error('Google SSO Sign In error:', redirectErr);
       throw redirectErr;
     }

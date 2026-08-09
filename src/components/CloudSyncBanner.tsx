@@ -64,6 +64,17 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
     setTimeout(() => setIsSyncing(false), 800);
   };
 
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedDomain(true);
+    setTimeout(() => setCopiedDomain(false), 2000);
+  };
+
+  const isUnauthorizedDomainError = Boolean(errorMsg && errorMsg.startsWith('UNAUTHORIZED_DOMAIN|'));
+  const unauthorizedDomain = (isUnauthorizedDomainError && errorMsg) ? errorMsg.split('|')[1] : '';
+
   if (compact) {
     return (
       <div className="flex items-center gap-2">
@@ -145,11 +156,64 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
         </div>
       </div>
 
-      {errorMsg && (
+      {isUnauthorizedDomainError ? (
+        <div className="p-4 bg-amber-950/50 border border-amber-700/60 rounded-xl space-y-3 text-xs">
+          <div className="flex items-center justify-between text-amber-300 font-bold text-sm">
+            <span>⚠️ Action Required: Add Authorized Domain to Firebase Console</span>
+            <span className="text-[10px] bg-amber-900/80 border border-amber-600 px-2 py-0.5 rounded font-mono">
+              auth/unauthorized-domain
+            </span>
+          </div>
+
+          <p className="text-slate-300 leading-relaxed">
+            Firebase Security requires domain authorization for Google SSO popups. Your domain <code className="text-amber-300 font-mono bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-800">{unauthorizedDomain || 'paios-4-1.vercel.app'}</code> needs to be added to Authorized Domains in Firebase.
+          </p>
+
+          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
+            <div className="font-bold text-slate-200">Quick 3-Step Setup:</div>
+            <ol className="list-decimal list-inside text-slate-300 space-y-1 font-mono text-[11px]">
+              <li>Open <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 underline hover:text-indigo-300">Firebase Console</a> & select project <span className="text-amber-300">consummate-particle-rxctm</span></li>
+              <li>Navigate to <span className="text-indigo-300">Authentication</span> &rarr; <span className="text-indigo-300">Settings</span> &rarr; <span className="text-indigo-300">Authorized domains</span></li>
+              <li>Click <span className="text-emerald-400 font-bold">Add domain</span> and paste your domain(s):</li>
+            </ol>
+            
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="font-mono text-emerald-300 bg-slate-900 border border-slate-800 px-2 py-1 rounded text-[11px]">
+                {unauthorizedDomain || window.location.hostname}
+              </span>
+              <button
+                onClick={() => copyToClipboard(unauthorizedDomain || window.location.hostname)}
+                className="px-2.5 py-1 bg-amber-800/80 hover:bg-amber-700 text-amber-100 rounded text-[11px] font-mono transition-colors"
+              >
+                {copiedDomain ? 'Copied Domain!' : 'Copy Domain'}
+              </button>
+              
+              <span className="font-mono text-emerald-300 bg-slate-900 border border-slate-800 px-2 py-1 rounded text-[11px]">
+                paios-4-1.vercel.app
+              </span>
+              <button
+                onClick={() => copyToClipboard('paios-4-1.vercel.app')}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[11px] font-mono transition-colors"
+              >
+                Copy Vercel Domain
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={handleSignIn}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs transition-colors"
+            >
+              Retry Google SSO
+            </button>
+          </div>
+        </div>
+      ) : errorMsg ? (
         <div className="p-3 bg-rose-950/60 border border-rose-800/80 rounded-xl text-rose-300 text-xs">
           {errorMsg}
         </div>
-      )}
+      ) : null}
 
       {currentUser ? (
         <div className="p-4 bg-emerald-950/30 border border-emerald-800/50 rounded-xl space-y-3">
