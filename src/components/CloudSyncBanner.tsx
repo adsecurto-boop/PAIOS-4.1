@@ -492,6 +492,10 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
 
           {authMethod === 'email' ? (
             <form onSubmit={handleEmailAuthSubmit} className="space-y-3">
+              <div className="p-2.5 bg-indigo-950/40 border border-indigo-800/50 rounded-lg text-indigo-200 text-[11px] flex items-center justify-between">
+                <span>💡 <strong>Recommended for Desktop & Mobile Apps</strong>: Email Auth works everywhere without Google browser popup restrictions.</span>
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold text-slate-200">
                   {emailMode === 'signup'
@@ -623,8 +627,12 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-slate-300 leading-relaxed">
-                Sign in with your Google Account to pair your Windows Desktop app (<code className="text-indigo-300 font-mono">PAIOS Desktop.exe</code>) and Android app (<code className="text-green-300 font-mono">PAIOS Mobile.apk</code>).
+                Sign in with your Google Account for browser synchronization.
               </p>
+
+              <div className="p-2.5 bg-amber-950/40 border border-amber-800/50 rounded-lg text-amber-200 text-[11px] leading-relaxed">
+                ⚠️ <strong>Desktop & Mobile App Notice</strong>: Google intentionally blocks Google OAuth sign-in inside embedded WebViews (<code className="text-amber-100 font-mono">PAIOS Desktop.exe</code> & <code className="text-amber-100 font-mono">PAIOS Mobile.apk</code>) to prevent security risks. Please use the <strong>Email & Password</strong> tab above for seamless sign-in across Desktop, Mobile, and Web!
+              </div>
 
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
