@@ -5,6 +5,10 @@ import {
   signInWithPopup,
   signInWithRedirect,
   signInAnonymously,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   signOut,
   onAuthStateChanged,
   User,
@@ -56,17 +60,77 @@ export async function signInWithGoogle(): Promise<User> {
   }
 }
 
-// Anonymous / Instant Guest Cloud Sync Sign In (Works even without domain authorization)
+// Anonymous / Instant Guest Cloud Sync Sign In (Works when Anonymous Auth is enabled)
 export async function signInWithGuestSync(): Promise<User> {
   try {
     const result = await signInAnonymously(auth);
     return result.user;
   } catch (err: any) {
     if (err?.code === 'auth/admin-restricted-operation' || err?.message?.includes('admin-restricted-operation')) {
+      console.warn('Firebase Anonymous auth is currently disabled in Firebase Console.');
       throw new Error('ANONYMOUS_DISABLED');
     }
-    console.error('Guest Sync Sign In error:', err);
+    console.warn('Guest Sync Sign In warning:', err);
     throw err;
+  }
+}
+
+// Email & Password Sign Up
+export async function signUpWithEmail(email: string, pass: string, name?: string): Promise<User> {
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, pass);
+    if (name && cred.user) {
+      await updateProfile(cred.user, { displayName: name });
+    }
+    return cred.user;
+  } catch (err: any) {
+    if (err?.code === 'auth/email-already-in-use') {
+      throw new Error('This email address is already registered. Please sign in instead.');
+    }
+    if (err?.code === 'auth/weak-password') {
+      throw new Error('Password should be at least 6 characters long.');
+    }
+    if (err?.code === 'auth/invalid-email') {
+      throw new Error('Please enter a valid email address.');
+    }
+    if (err?.code === 'auth/operation-not-allowed') {
+      throw new Error('EMAIL_AUTH_DISABLED');
+    }
+    console.error('Email Sign Up Error:', err);
+    throw new Error(err?.message || 'Email Sign Up failed.');
+  }
+}
+
+// Email & Password Sign In
+export async function signInWithEmail(email: string, pass: string): Promise<User> {
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, pass);
+    return cred.user;
+  } catch (err: any) {
+    if (err?.code === 'auth/user-not-found' || err?.code === 'auth/wrong-password' || err?.code === 'auth/invalid-credential') {
+      throw new Error('Invalid email or password. Please check your credentials and try again.');
+    }
+    if (err?.code === 'auth/invalid-email') {
+      throw new Error('Please enter a valid email address.');
+    }
+    if (err?.code === 'auth/operation-not-allowed') {
+      throw new Error('EMAIL_AUTH_DISABLED');
+    }
+    console.error('Email Sign In Error:', err);
+    throw new Error(err?.message || 'Email Sign In failed.');
+  }
+}
+
+// Password Reset Email
+export async function resetPassword(email: string): Promise<void> {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (err: any) {
+    if (err?.code === 'auth/user-not-found') {
+      throw new Error('No account found with this email address.');
+    }
+    console.error('Password Reset Error:', err);
+    throw new Error(err?.message || 'Failed to send password reset email.');
   }
 }
 
