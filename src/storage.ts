@@ -437,6 +437,9 @@ export const storage = {
 
     return newCapture;
   },
+  addQuickCaptureNote(text: string, category: string = 'Personal'): QuickCapture {
+    return this.addQuickCapture(text, category);
+  },
   deleteQuickCapture(id: number): void {
     const captures = this.getAllCaptures().filter((c) => c.id !== id);
     save(STORAGE_KEYS.CAPTURES, captures);
@@ -448,6 +451,12 @@ export const storage = {
       [getTodayDateString()]: initialMorningCheckIn,
     });
     return checkIns[getTodayDateString()] || null;
+  },
+  getCheckIns(): MorningCheckIn[] {
+    const map = load<Record<string, MorningCheckIn>>(STORAGE_KEYS.CHECKIN, {
+      [getTodayDateString()]: initialMorningCheckIn,
+    });
+    return Object.values(map);
   },
   saveMorningCheckIn(checkIn: MorningCheckIn): void {
     const checkIns = load<Record<string, MorningCheckIn>>(STORAGE_KEYS.CHECKIN, {});
@@ -462,9 +471,16 @@ export const storage = {
       type: 'CHECKIN',
     });
   },
+  saveCheckIn(checkIn: MorningCheckIn): void {
+    this.saveMorningCheckIn(checkIn);
+  },
   getEveningReview(): EveningReview | null {
     const reviews = load<Record<string, EveningReview>>(STORAGE_KEYS.REVIEW, {});
     return reviews[getTodayDateString()] || null;
+  },
+  getReviews(): EveningReview[] {
+    const map = load<Record<string, EveningReview>>(STORAGE_KEYS.REVIEW, {});
+    return Object.values(map);
   },
   saveEveningReview(review: EveningReview): void {
     const reviews = load<Record<string, EveningReview>>(STORAGE_KEYS.REVIEW, {});
@@ -479,18 +495,23 @@ export const storage = {
       type: 'CHECKIN',
     });
   },
+  saveReview(review: EveningReview): void {
+    this.saveEveningReview(review);
+  },
 
   // --- JOURNAL ---
   getJournalEntries(): JournalEntry[] {
     return load(STORAGE_KEYS.JOURNAL, initialJournal);
   },
-  addJournalEntry(title: string, content: string, tags: string = ''): JournalEntry {
+  addJournalEntry(title: string, content: string, moodScore: number = 5, category: string = 'Personal', tags: string = ''): JournalEntry {
     const journal = this.getJournalEntries();
     const newEntry: JournalEntry = {
       id: Date.now(),
       title,
       content,
       tags,
+      category,
+      moodScore,
       createdAtMillis: Date.now(),
       updatedAtMillis: Date.now(),
     };
@@ -499,7 +520,7 @@ export const storage = {
 
     this.addTimelineEntry({
       title: `Journal: ${title}`,
-      category: 'Personal',
+      category,
       timestampMillis: Date.now(),
       type: 'JOURNAL',
     });
@@ -558,17 +579,31 @@ export const storage = {
   getAiMessages(): AIMessage[] {
     return load(STORAGE_KEYS.AI_MESSAGES, initialAiMessages);
   },
-  addAiMessage(sender: 'USER' | 'AI', text: string, actionType?: any, actionPayloadJson?: any): AIMessage {
+  addAiMessage(senderOrMsg: 'USER' | 'AI' | AIMessage, text?: string, actionType?: any, actionPayloadJson?: any): AIMessage {
     const messages = this.getAiMessages();
-    const newMsg: AIMessage = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      sender,
-      text,
-      actionType,
-      actionPayloadJson,
-      isActionConfirmed: null,
-      timestampMillis: Date.now(),
-    };
+    let newMsg: AIMessage;
+
+    if (typeof senderOrMsg === 'object') {
+      newMsg = {
+        ...senderOrMsg,
+        id: senderOrMsg.id || Date.now(),
+        sender: senderOrMsg.sender || (senderOrMsg.isUser ? 'USER' : 'AI'),
+        isUser: senderOrMsg.isUser ?? senderOrMsg.sender === 'USER',
+        timestampMillis: senderOrMsg.timestampMillis || Date.now(),
+      };
+    } else {
+      newMsg = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        sender: senderOrMsg,
+        isUser: senderOrMsg === 'USER',
+        text: text || '',
+        actionType,
+        actionPayloadJson,
+        isActionConfirmed: null,
+        timestampMillis: Date.now(),
+      };
+    }
+
     messages.push(newMsg);
     save(STORAGE_KEYS.AI_MESSAGES, messages);
     return newMsg;
@@ -596,7 +631,13 @@ export const storage = {
     save(STORAGE_KEYS.AI_MESSAGES, []);
   },
 
-  // --- GLOBAL SEARCH ---
+  // --- GLOBAL SEARCH & EXTRA STORAGE HELPERS ---
+  getTimelineEntries(): TimelineEntry[] {
+    return this.getAllTimeline();
+  },
+  searchAll(query: string): SearchResults {
+    return this.globalSearch(query);
+  },
   globalSearch(query: string): SearchResults {
     if (!query.trim()) {
       return { tasks: [], timeline: [], captures: [], journal: [], studyCards: [] };
@@ -612,4 +653,42 @@ export const storage = {
       ),
     };
   },
+  updateSettings(updated: Partial<UserSettings>): UserSettings {
+    const current = this.getSettings();
+    const merged = { ...current, ...updated };
+    this.saveSettings(merged);
+    return merged;
+  },
+  seedSampleData(): void {
+    save(STORAGE_KEYS.TASKS, initialTasks);
+    save(STORAGE_KEYS.TIMELINE, initialTimeline);
+    save(STORAGE_KEYS.CAPTURES, []);
+    save(STORAGE_KEYS.CHECKIN, { [initialMorningCheckIn.dateString]: initialMorningCheckIn });
+    save(STORAGE_KEYS.JOURNAL, initialJournal);
+    save(STORAGE_KEYS.STUDY_CARDS, initialStudyCards);
+    save(STORAGE_KEYS.AI_MESSAGES, initialAiMessages);
+    save(STORAGE_KEYS.SETTINGS, initialSettings);
+  },
+  clearAllData(): void {
+    Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+  },
+  exportBackupJson(): string {
+    const backup: Record<string, any> = {};
+    Object.entries(STORAGE_KEYS).forEach(([key, storageKey]) => {
+      backup[key] = load(storageKey, null);
+    });
+    return JSON.stringify(backup, null, 2);
+  },
+  getUserContextString(): string {
+    const active = this.getActiveActivity();
+    const tasks = this.getTasks();
+    const timeline = this.getAllTimeline().slice(0, 5);
+    return `
+Active Activity: ${active ? `${active.activityName} (${active.category})` : 'None'}
+Pending Tasks: ${tasks.filter((t) => t.status !== 'COMPLETED').map((t) => t.title).join(', ') || 'None'}
+Recent Activity Log: ${timeline.map((t) => `${t.title} [${t.category}]`).join('; ') || 'None'}
+    `.trim();
+  },
 };
+
+export const PAIOSStorage = storage;

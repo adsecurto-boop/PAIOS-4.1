@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, User, Key, Cpu, Database, RefreshCw, Download, Check } from 'lucide-react';
+import { Settings, User, Key, Cpu, Database, RefreshCw, Download, Check, Monitor, Sparkles } from 'lucide-react';
 import { UserSettings } from '../types';
 
 interface SettingsScreenProps {
@@ -8,6 +8,7 @@ interface SettingsScreenProps {
   onResetSampleData: () => void;
   onClearAllData: () => void;
   onExportData: () => void;
+  onOpenExportModal?: () => void;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -16,6 +17,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onResetSampleData,
   onClearAllData,
   onExportData,
+  onOpenExportModal,
 }) => {
   const [name, setName] = useState(settings.userName);
   const [apiKey, setApiKey] = useState(settings.customApiKey || '');
@@ -42,9 +44,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
         <div>
           <h2 className="font-heading font-bold text-xl text-white">PAIOS Operating System Settings</h2>
-          <p className="text-xs text-slate-400">Configure profile preferences, AI model params, and local storage</p>
+          <p className="text-xs text-slate-400">Configure profile preferences, AI model params, and Windows Desktop packaging</p>
         </div>
       </div>
+
+      {/* Windows Desktop Packaging Banner */}
+      {onOpenExportModal && (
+        <div className="bg-gradient-to-r from-indigo-950/80 via-slate-900 to-cyan-950/80 border border-indigo-800/60 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-xl bg-indigo-600/30 text-indigo-300 border border-indigo-500/40">
+              <Monitor className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-heading font-bold text-base text-white flex items-center gap-2">
+                <span>PAIOS Windows Desktop Executable</span>
+                <span className="text-[10px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 px-1.5 py-0.5 rounded">
+                  Win64 Native
+                </span>
+              </h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Generate Electron / Tauri build scripts to run PAIOS as a native `.exe` Windows app
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onOpenExportModal}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition-all shrink-0 flex items-center gap-2"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Build Windows App</span>
+          </button>
+        </div>
+      )}
 
       {/* User & AI Settings */}
       <form onSubmit={handleSaveProfile} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-lg space-y-5">

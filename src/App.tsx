@@ -33,8 +33,17 @@ import { AiScreen } from './screens/AiScreen';
 import { JournalScreen } from './screens/JournalScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 
+import { WindowsTitleBar } from './components/WindowsTitleBar';
+import { WindowsTaskBar } from './components/WindowsTaskBar';
+import { DesktopAppExportModal } from './components/DesktopAppExportModal';
+
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>(NavTab.TODAY);
+
+  // Desktop Window Controls State
+  const [isMaximized, setIsMaximized] = useState(true);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Storage State
   const [activeActivity, setActiveActivity] = useState<ActivityLog | null>(null);
@@ -83,6 +92,25 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     reloadState();
+  }, []);
+
+  // Global Desktop Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        handleSearch('');
+        setShowSearchModal(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setShowTaskModal(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'q') {
+        e.preventDefault();
+        setShowQuickCaptureModal(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Timer Ticker Loop
@@ -312,97 +340,142 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
-      {/* Top Header Bar */}
-      <TopHeaderBar
-        userName={settings.userName}
+      {/* Windows 11 Desktop Title Bar */}
+      <WindowsTitleBar
+        isMaximized={isMaximized}
+        isMinimized={isMinimized}
+        onMinimize={() => setIsMinimized(true)}
+        onMaximizeToggle={() => setIsMaximized(!isMaximized)}
+        onClose={() => {
+          if (confirm('Minimize PAIOS Desktop to System Tray?')) {
+            setIsMinimized(true);
+          }
+        }}
         onOpenSearch={() => {
           handleSearch('');
           setShowSearchModal(true);
         }}
-        onOpenCheckIn={() => setShowCheckInModal(true)}
-        onOpenReview={() => setShowReviewModal(true)}
         onOpenSettings={() => setActiveTab(NavTab.SETTINGS)}
+        onNewTask={() => setShowTaskModal(true)}
+        onNewCapture={() => setShowQuickCaptureModal(true)}
+        onExportDesktopApp={() => setShowExportModal(true)}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6">
-        {activeTab === NavTab.TODAY && (
-          <TodayScreen
-            activeActivity={activeActivity}
-            priorities={tasks.filter((t) => t.isPriorityPin)}
-            todayTasks={tasks}
-            timelineEntries={timelineEntries}
-            userName={settings.userName}
-            onStartActivity={handleStartActivity}
-            onPauseActivity={handlePauseActivity}
-            onResumeActivity={handleResumeActivity}
-            onFinishActivity={handleFinishActivity}
-            onToggleTaskStatus={handleToggleTaskStatus}
-            onOpenStartActivity={() => setShowStartActivityModal(true)}
-            onOpenQuickCapture={() => setShowQuickCaptureModal(true)}
-            onOpenAddTask={() => setShowTaskModal(true)}
-            onOpenJournal={() => setActiveTab(NavTab.JOURNAL)}
-            onOpenStudy={() => setActiveTab(NavTab.LEARN)}
-          />
-        )}
+      {/* Main Desktop Window Frame */}
+      {isMinimized ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-slate-950/90">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-950/60 border border-indigo-800/60 flex items-center justify-center text-indigo-400 mb-4 animate-bounce">
+            <Cpu className="w-8 h-8" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-200">PAIOS Running in System Tray</h3>
+          <p className="text-xs text-slate-400 mt-1 max-w-sm">
+            PAIOS Desktop is active in the background. Click the taskbar app icon below to restore the application window.
+          </p>
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all"
+          >
+            Restore Window
+          </button>
+        </div>
+      ) : (
+        <div className={`flex-1 flex flex-col transition-all duration-200 ${!isMaximized ? 'p-2 sm:p-4 max-w-7xl mx-auto w-full' : 'w-full'}`}>
+          <div className={`flex-1 flex flex-col bg-slate-950 ${!isMaximized ? 'rounded-2xl border border-slate-800/80 shadow-2xl overflow-hidden' : ''}`}>
+            {/* Top Header Bar */}
+            <TopHeaderBar
+              userName={settings.userName}
+              onOpenSearch={() => {
+                handleSearch('');
+                setShowSearchModal(true);
+              }}
+              onOpenCheckIn={() => setShowCheckInModal(true)}
+              onOpenReview={() => setShowReviewModal(true)}
+              onOpenSettings={() => setActiveTab(NavTab.SETTINGS)}
+            />
 
-        {activeTab === NavTab.TIMELINE && (
-          <TimelineScreen timelineEntries={timelineEntries} onDeleteEntry={handleDeleteTimelineEntry} />
-        )}
+            {/* Main Content Area */}
+            <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 pb-20">
+              {activeTab === NavTab.TODAY && (
+                <TodayScreen
+                  activeActivity={activeActivity}
+                  priorities={tasks.filter((t) => t.isPriorityPin)}
+                  todayTasks={tasks}
+                  timelineEntries={timelineEntries}
+                  userName={settings.userName}
+                  onStartActivity={handleStartActivity}
+                  onPauseActivity={handlePauseActivity}
+                  onResumeActivity={handleResumeActivity}
+                  onFinishActivity={handleFinishActivity}
+                  onToggleTaskStatus={handleToggleTaskStatus}
+                  onOpenStartActivity={() => setShowStartActivityModal(true)}
+                  onOpenQuickCapture={() => setShowQuickCaptureModal(true)}
+                  onOpenAddTask={() => setShowTaskModal(true)}
+                  onOpenJournal={() => setActiveTab(NavTab.JOURNAL)}
+                  onOpenStudy={() => setActiveTab(NavTab.LEARN)}
+                />
+              )}
 
-        {activeTab === NavTab.TASKS && (
-          <TasksScreen
-            tasks={tasks}
-            onToggleTaskStatus={handleToggleTaskStatus}
-            onToggleTaskPriorityPin={handleToggleTaskPriority}
-            onDeleteTask={handleDeleteTask}
-            onOpenAddTask={() => setShowTaskModal(true)}
-          />
-        )}
+              {activeTab === NavTab.TIMELINE && (
+                <TimelineScreen timelineEntries={timelineEntries} onDeleteEntry={handleDeleteTimelineEntry} />
+              )}
 
-        {activeTab === NavTab.LEARN && (
-          <LearnScreen
-            studyCards={studyCards}
-            onStartStudySession={(topic, mins) => {
-              handleStartActivity(`Study: ${topic}`, 'Study', `${mins} min active recall session`);
-            }}
-            onReviewStudyCard={handleReviewStudyCard}
-            onDeleteStudyCard={handleDeleteStudyCard}
-            onOpenAddCard={() => setShowStudyCardModal(true)}
-          />
-        )}
+              {activeTab === NavTab.TASKS && (
+                <TasksScreen
+                  tasks={tasks}
+                  onToggleTaskStatus={handleToggleTaskStatus}
+                  onToggleTaskPriorityPin={handleToggleTaskPriority}
+                  onDeleteTask={handleDeleteTask}
+                  onOpenAddTask={() => setShowTaskModal(true)}
+                />
+              )}
 
-        {activeTab === NavTab.INSIGHTS && (
-          <InsightsScreen activityLogs={timelineEntries as any} checkIns={checkIns} reviews={reviews} />
-        )}
+              {activeTab === NavTab.LEARN && (
+                <LearnScreen
+                  studyCards={studyCards}
+                  onStartStudySession={(topic, mins) => {
+                    handleStartActivity(`Study: ${topic}`, 'Study', `${mins} min active recall session`);
+                  }}
+                  onReviewStudyCard={handleReviewStudyCard}
+                  onDeleteStudyCard={handleDeleteStudyCard}
+                  onOpenAddCard={() => setShowStudyCardModal(true)}
+                />
+              )}
 
-        {activeTab === NavTab.AI && (
-          <AiScreen
-            messages={aiMessages}
-            userContextString={PAIOSStorage.getUserContextString()}
-            onSendMessage={handleSendAiMessage}
-            onExecuteAction={handleExecuteAiAction}
-          />
-        )}
+              {activeTab === NavTab.INSIGHTS && (
+                <InsightsScreen activityLogs={timelineEntries as any} checkIns={checkIns} reviews={reviews} />
+              )}
 
-        {activeTab === NavTab.JOURNAL && (
-          <JournalScreen
-            entries={journalEntries}
-            onAddJournalEntry={handleAddJournalEntry}
-            onDeleteJournalEntry={handleDeleteJournalEntry}
-          />
-        )}
+              {activeTab === NavTab.AI && (
+                <AiScreen
+                  messages={aiMessages}
+                  userContextString={PAIOSStorage.getUserContextString()}
+                  onSendMessage={handleSendAiMessage}
+                  onExecuteAction={handleExecuteAiAction}
+                />
+              )}
 
-        {activeTab === NavTab.SETTINGS && (
-          <SettingsScreen
-            settings={settings}
-            onUpdateSettings={handleUpdateSettings}
-            onResetSampleData={handleResetSampleData}
-            onClearAllData={handleClearAllData}
-            onExportData={handleExportData}
-          />
-        )}
-      </main>
+              {activeTab === NavTab.JOURNAL && (
+                <JournalScreen
+                  entries={journalEntries}
+                  onAddJournalEntry={handleAddJournalEntry}
+                  onDeleteJournalEntry={handleDeleteJournalEntry}
+                />
+              )}
+
+              {activeTab === NavTab.SETTINGS && (
+                <SettingsScreen
+                  settings={settings}
+                  onUpdateSettings={handleUpdateSettings}
+                  onResetSampleData={handleResetSampleData}
+                  onClearAllData={handleClearAllData}
+                  onExportData={handleExportData}
+                  onOpenExportModal={() => setShowExportModal(true)}
+                />
+              )}
+            </main>
+          </div>
+        </div>
+      )}
 
       {/* Persistent Floating Mini Timer Player */}
       {activeActivity && activeTab !== NavTab.TODAY && (
@@ -418,80 +491,31 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Bottom Navigation Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-slate-900/95 border-t border-slate-800/80 backdrop-blur-md px-2 py-2">
-        <div className="max-w-2xl mx-auto flex items-center justify-around">
-          <button
-            onClick={() => setActiveTab(NavTab.TODAY)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-              activeTab === NavTab.TODAY ? 'text-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Sun className="w-5 h-5" />
-            <span className="text-[10px] font-mono">Today</span>
-          </button>
+      {/* Windows 11 Bottom Taskbar */}
+      <WindowsTaskBar
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setIsMinimized(false);
+          setActiveTab(tab);
+        }}
+        activeActivity={activeActivity}
+        elapsedSeconds={elapsedTimerSeconds}
+        onPauseActivity={() => activeActivity && handlePauseActivity(activeActivity.id)}
+        onResumeActivity={() => activeActivity && handleResumeActivity(activeActivity.id)}
+        onFinishActivity={() => activeActivity && handleFinishActivity(activeActivity.id)}
+        onOpenSearch={() => {
+          handleSearch('');
+          setShowSearchModal(true);
+        }}
+        onOpenExportModal={() => setShowExportModal(true)}
+        isMinimized={isMinimized}
+        onRestoreFromTaskbar={() => setIsMinimized(false)}
+      />
 
-          <button
-            onClick={() => setActiveTab(NavTab.TIMELINE)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-              activeTab === NavTab.TIMELINE ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <History className="w-5 h-5" />
-            <span className="text-[10px] font-mono">Timeline</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab(NavTab.TASKS)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-              activeTab === NavTab.TASKS ? 'text-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <CheckCircle2 className="w-5 h-5" />
-            <span className="text-[10px] font-mono">Tasks</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab(NavTab.LEARN)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-              activeTab === NavTab.LEARN ? 'text-purple-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Brain className="w-5 h-5" />
-            <span className="text-[10px] font-mono">Learn</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab(NavTab.INSIGHTS)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-              activeTab === NavTab.INSIGHTS ? 'text-cyan-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <BarChart3 className="w-5 h-5" />
-            <span className="text-[10px] font-mono">Insights</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab(NavTab.AI)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-              activeTab === NavTab.AI ? 'text-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Cpu className="w-5 h-5" />
-            <span className="text-[10px] font-mono">PAIOS AI</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab(NavTab.JOURNAL)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-              activeTab === NavTab.JOURNAL ? 'text-amber-400 font-bold' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <BookOpen className="w-5 h-5" />
-            <span className="text-[10px] font-mono">Journal</span>
-          </button>
-        </div>
-      </nav>
+      {/* Modals */}
+      {showExportModal && (
+        <DesktopAppExportModal onDismiss={() => setShowExportModal(false)} />
+      )}
 
       {/* Modals */}
       {showStartActivityModal && (

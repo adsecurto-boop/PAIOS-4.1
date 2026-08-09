@@ -63,6 +63,7 @@ export interface MorningCheckIn {
 }
 
 export interface EveningReview {
+  id?: number;
   dateString: string; // YYYY-MM-DD
   activeTimeFormatted: string;
   workTimeFormatted: string;
@@ -83,6 +84,8 @@ export interface JournalEntry {
   tags: string;
   createdAtMillis: number;
   updatedAtMillis: number;
+  category?: string;
+  moodScore?: number;
 }
 
 export interface StudyCard {
@@ -98,13 +101,16 @@ export interface StudyCard {
 
 export interface AIMessage {
   id: number;
-  sender: "USER" | "AI";
+  sender?: "USER" | "AI";
+  isUser?: boolean;
   text: string;
   actionType?: "ADD_TASK" | "START_ACTIVITY" | "SAVE_NOTE" | null;
   actionPayloadJson?: string | null;
   isActionConfirmed?: boolean | null;
   timestampMillis: number;
 }
+
+export type AiChatMessage = AIMessage;
 
 export interface UserSettings {
   id: number;
@@ -115,6 +121,7 @@ export interface UserSettings {
   themeMode: "SYSTEM" | "DARK" | "LIGHT";
   morningNotificationEnabled: boolean;
   eveningNotificationEnabled: boolean;
+  preferredModel?: string;
 }
 
 export interface SearchResults {
@@ -125,4 +132,13 @@ export interface SearchResults {
   studyCards: StudyCard[];
 }
 
-export type NavTab = "TODAY" | "TIMELINE" | "TASKS" | "LEARN" | "INSIGHTS";
+export enum NavTab {
+  TODAY = "TODAY",
+  TIMELINE = "TIMELINE",
+  TASKS = "TASKS",
+  LEARN = "LEARN",
+  INSIGHTS = "INSIGHTS",
+  AI = "AI",
+  JOURNAL = "JOURNAL",
+  SETTINGS = "SETTINGS",
+}

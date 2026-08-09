@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Psychology, Brain, Tag } from 'lucide-react';
+import { X, Brain, Tag } from 'lucide-react';
 
 interface StudyCardModalProps {
   onDismiss: () => void;
