@@ -12,6 +12,8 @@ import {
   SearchResults,
 } from './types';
 
+import { auth, syncLocalToCloud } from './firebase';
+
 const STORAGE_KEYS = {
   TASKS: 'paios_tasks_v1',
   ACTIVITIES: 'paios_activities_v1',
@@ -215,6 +217,9 @@ function save<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     window.dispatchEvent(new Event('paios_storage_change'));
+    if (auth.currentUser) {
+      syncLocalToCloud(auth.currentUser.uid);
+    }
   } catch (e) {
     console.error(`Error saving key ${key}:`, e);
   }

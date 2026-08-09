@@ -92,6 +92,11 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     reloadState();
+    const handleStorageChange = () => {
+      reloadState();
+    };
+    window.addEventListener('paios_storage_change', handleStorageChange);
+    return () => window.removeEventListener('paios_storage_change', handleStorageChange);
   }, []);
 
   // Global Desktop Keyboard Shortcuts Listener
@@ -395,6 +400,7 @@ export const App: React.FC = () => {
             {/* Top Header Bar */}
             <TopHeaderBar
               userName={settings.userName}
+              onSyncComplete={reloadState}
               onOpenSearch={() => {
                 handleSearch('');
                 setShowSearchModal(true);

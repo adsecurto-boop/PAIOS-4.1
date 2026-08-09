@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Settings, User, Key, Cpu, Database, RefreshCw, Download, Check, Monitor, Sparkles } from 'lucide-react';
 import { UserSettings } from '../types';
+import { CloudSyncBanner } from '../components/CloudSyncBanner';
 
 interface SettingsScreenProps {
   settings: UserSettings;
@@ -47,6 +48,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <p className="text-xs text-slate-400">Configure profile preferences, AI model params, and Windows Desktop packaging</p>
         </div>
       </div>
+
+      {/* Google SSO & Firestore Realtime Cloud Sync Banner */}
+      <CloudSyncBanner />
 
       {/* Windows Desktop Packaging Banner */}
       {onOpenExportModal && (

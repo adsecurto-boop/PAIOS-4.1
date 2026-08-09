@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, Sun, Moon, Settings, Cpu } from 'lucide-react';
+import { CloudSyncBanner } from './CloudSyncBanner';
 
 interface TopHeaderBarProps {
   userName: string;
@@ -7,6 +8,7 @@ interface TopHeaderBarProps {
   onOpenCheckIn: () => void;
   onOpenReview: () => void;
   onOpenSettings: () => void;
+  onSyncComplete?: () => void;
 }
 
 export const TopHeaderBar: React.FC<TopHeaderBarProps> = ({
@@ -15,6 +17,7 @@ export const TopHeaderBar: React.FC<TopHeaderBarProps> = ({
   onOpenCheckIn,
   onOpenReview,
   onOpenSettings,
+  onSyncComplete,
 }) => {
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -52,6 +55,8 @@ export const TopHeaderBar: React.FC<TopHeaderBarProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
+          <CloudSyncBanner compact onSyncComplete={onSyncComplete} />
+
           <button
             onClick={onOpenSearch}
             className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors border border-slate-700/60"
