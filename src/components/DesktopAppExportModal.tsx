@@ -12,6 +12,7 @@ import {
   Monitor,
   Command,
   Sparkles,
+  Smartphone,
 } from 'lucide-react';
 
 interface DesktopAppExportModalProps {
@@ -19,7 +20,7 @@ interface DesktopAppExportModalProps {
 }
 
 export const DesktopAppExportModal: React.FC<DesktopAppExportModalProps> = ({ onDismiss }) => {
-  const [activeTab, setActiveTab] = useState<'electron' | 'tauri' | 'autoupdate' | 'hotkeys'>('electron');
+  const [activeTab, setActiveTab] = useState<'electron' | 'tauri' | 'android' | 'autoupdate' | 'hotkeys'>('electron');
 
   const githubWorkflowYaml = `name: Build & Release PAIOS Desktop (.exe)
 
@@ -43,6 +44,44 @@ jobs:
         with:
           name: PAIOS-Desktop-Windows-EXE
           path: dist-electron/PAIOS Desktop-win32-x64/
+          retention-days: 30`;
+
+  const githubApkWorkflowYaml = `name: Build & Release PAIOS Android (.apk)
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - run: npm install
+      - run: npm install @capacitor/core @capacitor/cli @capacitor/android
+      - run: npm run build
+      - run: |
+          npx cap init "PAIOS Mobile" "com.paios.mobile" --web-dir=dist || true
+          npx cap add android || true
+          npx cap sync android
+      - run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PAIOS-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30`;
   const [copiedScript, setCopiedScript] = useState<string | null>(null);
 
@@ -167,6 +206,18 @@ pause`;
           </button>
 
           <button
+            onClick={() => setActiveTab('android')}
+            className={`pb-2.5 border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'android'
+                ? 'border-green-500 text-green-400 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Smartphone className="w-4 h-4 text-green-400" />
+            <span>Android App (.apk)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('autoupdate')}
             className={`pb-2.5 border-b-2 transition-colors flex items-center gap-1.5 ${
               activeTab === 'autoupdate'
@@ -279,15 +330,77 @@ pause`;
             </div>
           )}
 
+          {activeTab === 'android' && (
+            <div className="space-y-4">
+              <div className="p-3 bg-green-950/40 border border-green-800/50 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 text-green-300 font-bold text-sm">
+                  <Smartphone className="w-4 h-4 text-green-400" />
+                  <span>PAIOS Android App & Live Auto-Update</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  PAIOS Android is powered by Capacitor with a live auto-updating bridge pointing to your Vercel URL (<code className="text-green-300 font-mono">https://paios-4-1.vercel.app</code>) configured in <code className="text-green-300 font-mono">capacitor.config.json</code>!
+                </p>
+              </div>
+
+              {/* Local Command */}
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
+                    <Terminal className="w-3.5 h-3.5 text-green-400" />
+                    Build Android APK Locally
+                  </span>
+                  <button
+                    onClick={() => handleCopy('npm run build:apk', 'apk-cmd')}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-mono"
+                  >
+                    {copiedScript === 'apk-cmd' ? 'Copied' : 'Copy Command'}
+                  </button>
+                </div>
+                <pre className="bg-slate-900 p-2 rounded-lg font-mono text-[11px] text-green-300">
+                  npm run build:apk
+                </pre>
+              </div>
+
+              {/* Auto Update Explanation */}
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>How Android Auto-Update Works</span>
+                </div>
+                <p className="text-slate-400 text-[11px]">
+                  When you <code className="text-emerald-300 font-mono">git push</code>, Vercel automatically deploys your new commit to <code className="text-indigo-300 font-mono">https://paios-4-1.vercel.app</code>. Your installed Android app automatically displays the latest version on launch without re-building or re-installing the `.apk`!
+                </p>
+              </div>
+
+              {/* GitHub Action CI/CD */}
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 text-xs">
+                    GitHub Action Workflow (.github/workflows/build-apk.yml)
+                  </span>
+                  <button
+                    onClick={() => handleCopy(githubApkWorkflowYaml, 'apk-workflow')}
+                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-mono"
+                  >
+                    {copiedScript === 'apk-workflow' ? 'Copied' : 'Copy .yml'}
+                  </button>
+                </div>
+                <pre className="bg-slate-900 p-2.5 rounded-lg font-mono text-[10px] text-green-200 max-h-36 overflow-x-auto">
+                  {githubApkWorkflowYaml}
+                </pre>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'autoupdate' && (
             <div className="space-y-4">
               <div className="p-3 bg-emerald-950/40 border border-emerald-800/50 rounded-xl space-y-2">
                 <div className="flex items-center gap-2 text-emerald-300 font-bold text-sm">
                   <Sparkles className="w-4 h-4" />
-                  <span>2 Methods for Auto-Updating Without Rebuilding .exe</span>
+                  <span>Auto-Updating Windows .exe & Android .apk</span>
                 </div>
                 <p className="text-slate-300 text-[11px] leading-relaxed">
-                  You don't have to manually run <code className="bg-slate-950 px-1 py-0.5 rounded text-emerald-300 font-mono">npm run build:exe</code> every time you make a git commit. Pick either method below:
+                  Every time you make a <code className="bg-slate-950 px-1 py-0.5 rounded text-emerald-300 font-mono">git push</code>, both Windows Desktop and Android Mobile apps automatically sync and update!
                 </p>
               </div>
 
@@ -296,15 +409,15 @@ pause`;
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Method 1: Live Sync via Vercel (0 Rebuilds Needed - Preconfigured!)
+                    Live Sync via Vercel (0 Rebuilds Needed)
                   </span>
                   <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded font-mono">
-                    Configured: https://paios-4-1.vercel.app
+                    https://paios-4-1.vercel.app
                   </span>
                 </div>
                 <p className="text-slate-400 text-[11px]">
-                  Your desktop app is preconfigured to auto-load <code className="text-emerald-300 font-mono">https://paios-4-1.vercel.app</code> in <code className="text-indigo-300 font-mono">electron-main.cjs</code>.
-                  Every time you <code className="text-emerald-300 font-mono">git push</code>, Vercel deploys the code and PAIOS Desktop updates automatically on open or when pressing <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-200 rounded font-mono text-[10px]">Ctrl+Shift+R</kbd>!
+                  Both <code className="text-indigo-300 font-mono">electron-main.cjs</code> and <code className="text-green-300 font-mono">capacitor.config.json</code> load your live Vercel URL.
+                  Pushing code to Git updates Vercel, which instantly updates your installed Windows app and Android app on open!
                 </p>
               </div>
 
@@ -313,30 +426,31 @@ pause`;
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
                     <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
-                    Method 2: GitHub Actions CI/CD (Auto-Build .exe on Git Push)
+                    GitHub Actions Workflows (Automated Cloud Builds)
                   </span>
-                  <button
-                    onClick={() => handleCopy(githubWorkflowYaml, 'github-workflow')}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 flex items-center gap-1 transition-colors text-[11px]"
-                  >
-                    {copiedScript === 'github-workflow' ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" /> Copy .yml Workflow
-                      </>
-                    )}
-                  </button>
                 </div>
-                <p className="text-slate-400 text-[11px]">
-                  We created <code className="text-cyan-300 font-mono">.github/workflows/build-exe.yml</code> in your repository.
-                  When you push a commit to GitHub, GitHub Actions will automatically compile your Windows <code className="text-cyan-300 font-mono">PAIOS Desktop.exe</code> in the cloud and upload it as a downloadable release artifact!
-                </p>
-                <pre className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 font-mono text-[10px] text-cyan-200 overflow-x-auto max-h-36">
-                  {githubWorkflowYaml}
-                </pre>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="font-bold text-cyan-300 mb-1">Windows (.exe)</div>
+                    <div className="text-slate-400 font-mono text-[10px]">.github/workflows/build-exe.yml</div>
+                    <button
+                      onClick={() => handleCopy(githubWorkflowYaml, 'github-workflow')}
+                      className="mt-2 text-indigo-400 hover:text-indigo-300 text-[10px] font-mono underline"
+                    >
+                      Copy Workflow YAML
+                    </button>
+                  </div>
+                  <div className="p-2 bg-slate-900 rounded-lg border border-slate-800">
+                    <div className="font-bold text-green-300 mb-1">Android (.apk)</div>
+                    <div className="text-slate-400 font-mono text-[10px]">.github/workflows/build-apk.yml</div>
+                    <button
+                      onClick={() => handleCopy(githubApkWorkflowYaml, 'apk-workflow')}
+                      className="mt-2 text-green-400 hover:text-green-300 text-[10px] font-mono underline"
+                    >
+                      Copy Workflow YAML
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
