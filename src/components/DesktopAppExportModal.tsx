@@ -19,7 +19,32 @@ interface DesktopAppExportModalProps {
 }
 
 export const DesktopAppExportModal: React.FC<DesktopAppExportModalProps> = ({ onDismiss }) => {
-  const [activeTab, setActiveTab] = useState<'electron' | 'tauri' | 'hotkeys'>('electron');
+  const [activeTab, setActiveTab] = useState<'electron' | 'tauri' | 'autoupdate' | 'hotkeys'>('electron');
+
+  const githubWorkflowYaml = `name: Build & Release PAIOS Desktop (.exe)
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build:exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PAIOS-Desktop-Windows-EXE
+          path: dist-electron/PAIOS Desktop-win32-x64/
+          retention-days: 30`;
   const [copiedScript, setCopiedScript] = useState<string | null>(null);
 
   const electronMainJs = `// PAIOS Desktop - Electron Main Process (main.js)
@@ -143,6 +168,18 @@ pause`;
           </button>
 
           <button
+            onClick={() => setActiveTab('autoupdate')}
+            className={`pb-2.5 border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'autoupdate'
+                ? 'border-emerald-500 text-emerald-400 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            <span>Auto-Update & Git CI/CD</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('hotkeys')}
             className={`pb-2.5 border-b-2 transition-colors flex items-center gap-1.5 ${
               activeTab === 'hotkeys'
@@ -239,6 +276,68 @@ pause`;
                     <Copy className="w-3.5 h-3.5" />
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'autoupdate' && (
+            <div className="space-y-4">
+              <div className="p-3 bg-emerald-950/40 border border-emerald-800/50 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 text-emerald-300 font-bold text-sm">
+                  <Sparkles className="w-4 h-4" />
+                  <span>2 Methods for Auto-Updating Without Rebuilding .exe</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  You don't have to manually run <code className="bg-slate-950 px-1 py-0.5 rounded text-emerald-300 font-mono">npm run build:exe</code> every time you make a git commit. Pick either method below:
+                </p>
+              </div>
+
+              {/* Method 1: Live Cloud Sync */}
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Method 1: Live Cloud Sync Mode (0 Rebuilds Needed)
+                  </span>
+                  <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded font-mono">
+                    Instant Updates
+                  </span>
+                </div>
+                <p className="text-slate-400 text-[11px]">
+                  When you deploy your web app (e.g. to Vercel, Cloud Run, or GitHub Pages), set the <code className="text-indigo-300 font-mono">PAIOS_REMOTE_URL</code> variable or set your live URL in <code className="text-indigo-300 font-mono">electron-main.cjs</code>.
+                  Every time you <code className="text-emerald-300 font-mono">git push</code>, the desktop app will load the updated app instantly on launch or pressing <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-200 rounded font-mono text-[10px]">Ctrl+Shift+R</kbd>!
+                </p>
+              </div>
+
+              {/* Method 2: GitHub Actions CI/CD */}
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                    Method 2: GitHub Actions CI/CD (Auto-Build .exe on Git Push)
+                  </span>
+                  <button
+                    onClick={() => handleCopy(githubWorkflowYaml, 'github-workflow')}
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 flex items-center gap-1 transition-colors text-[11px]"
+                  >
+                    {copiedScript === 'github-workflow' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" /> Copy .yml Workflow
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-slate-400 text-[11px]">
+                  We created <code className="text-cyan-300 font-mono">.github/workflows/build-exe.yml</code> in your repository.
+                  When you push a commit to GitHub, GitHub Actions will automatically compile your Windows <code className="text-cyan-300 font-mono">PAIOS Desktop.exe</code> in the cloud and upload it as a downloadable release artifact!
+                </p>
+                <pre className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 font-mono text-[10px] text-cyan-200 overflow-x-auto max-h-36">
+                  {githubWorkflowYaml}
+                </pre>
               </div>
             </div>
           )}
