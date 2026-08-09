@@ -79,7 +79,7 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
   const handleConnectVault = async (codeToConnect?: string) => {
     const targetCode = (codeToConnect || vaultCodeInput).trim().toUpperCase();
     if (!targetCode) {
-      setErrorMsg('Please enter a Sync Passcode (e.g. SYNC-9821)');
+      setErrorMsg('Please enter a Sync Passcode (e.g. PAIOS-8821)');
       return;
     }
     setLoading(true);
@@ -87,13 +87,19 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
     setSuccessMsg(null);
     try {
       if (!auth.currentUser) {
-        await signInWithGuestSync();
+        try {
+          await signInWithGuestSync();
+        } catch (authErr) {
+          console.warn('Guest sign-in notice (proceeding with public vault sync):', authErr);
+        }
       }
+      await syncLocalToVault(targetCode);
       setSavedVaultCode(targetCode);
       setActiveVaultCode(targetCode);
       setSuccessMsg(`🎉 Connected to Sync Vault [${targetCode}]! Live realtime sync is now active across Desktop, Web & Mobile.`);
     } catch (err: any) {
-      setErrorMsg('Failed to connect to Sync Vault. Please try again.');
+      console.error('Vault connection error:', err);
+      setErrorMsg(`Failed to connect to Sync Vault (${err?.message || 'Check network connection'}). Please try again.`);
     } finally {
       setLoading(false);
     }
