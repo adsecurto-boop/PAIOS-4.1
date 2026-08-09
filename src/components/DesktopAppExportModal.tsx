@@ -36,9 +36,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-      - run: npm ci
+          node-version: 22
+      - run: npm install
       - run: npm run build:exe
       - uses: actions/upload-artifact@v4
         with:
