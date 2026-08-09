@@ -63,21 +63,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
+      - uses: android-actions/setup-android@v3
       - run: npm install
-      - run: npm install @capacitor/core @capacitor/cli @capacitor/android
       - run: npm run build
       - run: |
-          npx cap init "PAIOS Mobile" "com.paios.mobile" --web-dir=dist || true
           npx cap add android || true
           npx cap sync android
+      - run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
       - run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: PAIOS-Android-APK
