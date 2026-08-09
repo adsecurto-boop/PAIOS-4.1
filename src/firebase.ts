@@ -204,6 +204,7 @@ export function listenToCloudData(
   userId: string,
   onSyncComplete?: () => void
 ): () => void {
+  if (!userId) return () => {};
   const userDocRef = doc(db, 'users', userId);
 
   const unsubscribe = onSnapshot(
@@ -233,7 +234,11 @@ export function listenToCloudData(
       }
     },
     (error) => {
-      console.error('Firestore listener error:', error);
+      if (error?.code === 'permission-denied') {
+        console.warn('Firestore listener permission notice:', error.message);
+      } else {
+        console.error('Firestore listener error:', error);
+      }
       isApplyingRemoteUpdate = false;
     }
   );
