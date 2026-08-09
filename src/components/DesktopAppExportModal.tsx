@@ -173,10 +173,10 @@ pause`;
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="font-mono text-indigo-300 font-semibold flex items-center gap-1">
-                    <FileCode className="w-3.5 h-3.5" /> main.js (Electron Process)
+                    <FileCode className="w-3.5 h-3.5" /> electron-main.cjs (Electron Process)
                   </span>
                   <button
-                    onClick={() => handleCopy(electronMainJs, 'main.js')}
+                    onClick={() => handleCopy(electronMainJs, 'electron-main.cjs')}
                     className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 flex items-center gap-1 transition-colors text-[11px]"
                   >
                     {copiedScript === 'main.js' ? (
