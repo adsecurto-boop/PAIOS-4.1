@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  signInAnonymously,
   signOut,
   onAuthStateChanged,
   User,
@@ -52,6 +53,17 @@ export async function signInWithGoogle(): Promise<User> {
       console.error('Google SSO Sign In error:', redirectErr);
       throw redirectErr;
     }
+  }
+}
+
+// Anonymous / Instant Guest Cloud Sync Sign In (Works even without domain authorization)
+export async function signInWithGuestSync(): Promise<User> {
+  try {
+    const result = await signInAnonymously(auth);
+    return result.user;
+  } catch (err: any) {
+    console.error('Guest Sync Sign In error:', err);
+    throw err;
   }
 }
 
