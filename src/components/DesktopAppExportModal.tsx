@@ -77,10 +77,10 @@ app.on('window-all-closed', () => {
 echo ====================================================
 echo Building PAIOS Desktop Windows (.exe) Installer...
 echo ====================================================
-npm install
+set CSC_IDENTITY_AUTO_DISCOVERY=false
 npm run build
-npx electron-builder --win nsis
-echo Built executable located in /dist folder!
+npx electron-builder --win dir --config.forceCodeSigning=false
+echo Built executable located in /dist-electron/win-unpacked/PAIOS Desktop.exe!
 pause`;
 
   const handleCopy = (text: string, label: string) => {
