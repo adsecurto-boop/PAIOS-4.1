@@ -1,7 +1,9 @@
 {
-  "name": "paios-web",
+  "name": "paios-desktop",
   "private": true,
   "version": "1.0.0",
+  "description": "PAIOS Desktop - Personal AI Operating System",
+  "author": "PAIOS Team",
   "type": "module",
   "main": "electron-main.js",
   "scripts": {
@@ -11,6 +13,28 @@
     "electron": "electron .",
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit"
+  },
+  "build": {
+    "appId": "com.paios.desktop",
+    "productName": "PAIOS Desktop",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "dependencies": {
     "@google/genai": "*",
@@ -30,6 +54,8 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.0",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.0.6",
     "tsx": "^4.19.2",
