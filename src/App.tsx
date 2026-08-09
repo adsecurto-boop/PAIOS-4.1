@@ -291,6 +291,17 @@ export const App: React.FC = () => {
         }),
       });
 
+      const contentType = response.headers.get('content-type');
+      if (!response.ok || !contentType || !contentType.includes('application/json')) {
+        const errorText = await response.text();
+        console.error('Non-JSON or error response from AI endpoint:', response.status, errorText);
+        throw new Error(
+          response.status === 404
+            ? 'AI server endpoint not found (/api/ai/chat).'
+            : `Server returned status ${response.status}.`
+        );
+      }
+
       const data = await response.json();
 
       const botMsg: AiChatMessage = {
