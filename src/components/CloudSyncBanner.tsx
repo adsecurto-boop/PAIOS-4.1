@@ -12,6 +12,10 @@ import {
   onAuthChange,
   listenToCloudData,
   syncLocalToCloud,
+  listenToVaultData,
+  syncLocalToVault,
+  getSavedVaultCode,
+  setSavedVaultCode,
 } from '../firebase';
 
 interface CloudSyncBannerProps {
@@ -26,17 +30,21 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Email Auth State
-  const [authMethod, setAuthMethod] = useState<'email' | 'google'>('email');
+  // Sync Method State
+  const [authMethod, setAuthMethod] = useState<'vault' | 'email' | 'google'>('vault');
   const [emailMode, setEmailMode] = useState<'signup' | 'signin' | 'reset'>('signup');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [nameInput, setNameInput] = useState('');
 
+  // Vault Sync State
+  const [vaultCodeInput, setVaultCodeInput] = useState(getSavedVaultCode() || '');
+  const [activeVaultCode, setActiveVaultCode] = useState<string | null>(getSavedVaultCode());
+
   useEffect(() => {
     const unsubAuth = onAuthChange((user) => {
       setCurrentUser(user);
-      if (user) {
+      if (user && !activeVaultCode) {
         setIsSyncing(true);
         // Start listening to cloud updates for this user
         const unsubCloud = listenToCloudData(user.uid, () => {
@@ -48,7 +56,64 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
     });
 
     return () => unsubAuth();
-  }, []);
+  }, [activeVaultCode]);
+
+  // Vault Sync Listener
+  useEffect(() => {
+    let unsubVault: (() => void) | null = null;
+    if (activeVaultCode) {
+      setIsSyncing(true);
+      if (!auth.currentUser) {
+        signInWithGuestSync().catch(console.error);
+      }
+      unsubVault = listenToVaultData(activeVaultCode, () => {
+        setIsSyncing(false);
+        if (onSyncComplete) onSyncComplete();
+      });
+    }
+    return () => {
+      if (unsubVault) unsubVault();
+    };
+  }, [activeVaultCode]);
+
+  const handleConnectVault = async (codeToConnect?: string) => {
+    const targetCode = (codeToConnect || vaultCodeInput).trim().toUpperCase();
+    if (!targetCode) {
+      setErrorMsg('Please enter a Sync Passcode (e.g. SYNC-9821)');
+      return;
+    }
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      if (!auth.currentUser) {
+        await signInWithGuestSync();
+      }
+      setSavedVaultCode(targetCode);
+      setActiveVaultCode(targetCode);
+      setSuccessMsg(`🎉 Connected to Sync Vault [${targetCode}]! Live realtime sync is now active across Desktop, Web & Mobile.`);
+    } catch (err: any) {
+      setErrorMsg('Failed to connect to Sync Vault. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerateRandomVault = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = 'PAIOS-';
+    for (let i = 0; i < 4; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setVaultCodeInput(code);
+    handleConnectVault(code);
+  };
+
+  const handleDisconnectVault = () => {
+    setSavedVaultCode(null);
+    setActiveVaultCode(null);
+    setSuccessMsg('Disconnected from Sync Vault.');
+  };
 
   const handleEmailAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -456,41 +521,152 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
         </div>
       ) : (
         <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-4">
-          {/* Method Selection Tabs */}
-          <div className="flex border-b border-slate-800 pb-2 gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => setAuthMethod('email')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center gap-1.5 ${
-                authMethod === 'email'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Mail className="w-3.5 h-3.5" />
-              <span>Email & Password</span>
-            </button>
+      {/* Method Selection Tabs */}
+      <div className="flex border-b border-slate-800 pb-2 gap-2 text-xs overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setAuthMethod('vault')}
+          className={`px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center gap-1.5 shrink-0 ${
+            authMethod === 'vault'
+              ? 'bg-emerald-600 text-white shadow'
+              : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+          <span>Sync Passcode Vault (Universal)</span>
+        </button>
 
-            <button
-              type="button"
-              onClick={() => setAuthMethod('google')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center gap-1.5 ${
-                authMethod === 'google'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-              </svg>
-              <span>Google SSO</span>
-            </button>
+        <button
+          type="button"
+          onClick={() => setAuthMethod('email')}
+          className={`px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center gap-1.5 shrink-0 ${
+            authMethod === 'email'
+              ? 'bg-indigo-600 text-white shadow'
+              : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Mail className="w-3.5 h-3.5" />
+          <span>Email & Password</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAuthMethod('google')}
+          className={`px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center gap-1.5 shrink-0 ${
+            authMethod === 'google'
+              ? 'bg-indigo-600 text-white shadow'
+              : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+          </svg>
+          <span>Google SSO</span>
+        </button>
+      </div>
+
+      {authMethod === 'vault' ? (
+        <div className="space-y-3">
+          <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+                <span>100% Free Live Cross-Device Sync</span>
+              </span>
+              <span className="text-[10px] font-mono bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 px-2 py-0.5 rounded">
+                Zero Configuration
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Sync your Desktop app (<code className="text-emerald-300 font-mono">PAIOS Desktop.exe</code>), Mobile app (<code className="text-emerald-300 font-mono">PAIOS Mobile.apk</code>), and Web app (<code className="text-emerald-300 font-mono">paios-4-1.vercel.app</code>) using a shared <strong>Sync Passcode</strong>. No domain authorization, OAuth popup blocks, or email setup required!
+            </p>
           </div>
 
-          {authMethod === 'email' ? (
+          {activeVaultCode ? (
+            <div className="p-3 bg-slate-900 border border-emerald-600/60 rounded-xl space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Active Sync Passcode</div>
+                  <div className="text-lg font-mono font-bold text-emerald-400 tracking-wider flex items-center gap-2">
+                    <span>{activeVaultCode}</span>
+                    <span className="text-[10px] font-sans bg-emerald-950 text-emerald-300 border border-emerald-700 px-2 py-0.5 rounded font-normal flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Realtime Active
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(activeVaultCode);
+                      setSuccessMsg(`Copied Passcode '${activeVaultCode}' to clipboard! Paste it into your Desktop or Mobile app.`);
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition-colors"
+                  >
+                    Copy Passcode
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDisconnectVault}
+                    className="px-3 py-1.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 text-xs font-semibold rounded-lg border border-rose-800/80 transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-400 flex items-center gap-2 pt-2 border-t border-slate-800">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>To pair another device: open PAIOS on Desktop/Mobile, go to Cloud Sync, choose Sync Passcode, and enter <strong className="text-emerald-300 font-mono">{activeVaultCode}</strong>.</span>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
+                  <span className="text-xs font-bold text-slate-200 block">Option A: Enter Existing Passcode</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. PAIOS-8821"
+                      value={vaultCodeInput}
+                      onChange={(e) => setVaultCodeInput(e.target.value.toUpperCase())}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-500 uppercase"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleConnectVault()}
+                      disabled={loading}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-colors shrink-0 disabled:opacity-50"
+                    >
+                      Connect
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
+                  <span className="text-xs font-bold text-slate-200 block">Option B: Start New Vault</span>
+                  <button
+                    type="button"
+                    onClick={handleGenerateRandomVault}
+                    disabled={loading}
+                    className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-lg shadow transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Generate New Passcode & Sync</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : authMethod === 'email' ? (
             <form onSubmit={handleEmailAuthSubmit} className="space-y-3">
               <div className="p-2.5 bg-indigo-950/40 border border-indigo-800/50 rounded-lg text-indigo-200 text-[11px] flex items-center justify-between">
                 <span>💡 <strong>Recommended for Desktop & Mobile Apps</strong>: Email Auth works everywhere without Google browser popup restrictions.</span>

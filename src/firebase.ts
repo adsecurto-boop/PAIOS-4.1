@@ -176,7 +176,41 @@ export function getLocalSnapshot(): Record<string, any> {
 // Flag to prevent recursive loop during Firestore -> Local updates
 let isApplyingRemoteUpdate = false;
 
-// Save current local snapshot to Firestore
+// Helper to get and set active vault code
+export function getSavedVaultCode(): string | null {
+  try {
+    return localStorage.getItem('paios_vault_code');
+  } catch (e) {
+    return null;
+  }
+}
+
+export function setSavedVaultCode(code: string | null): void {
+  try {
+    if (code) {
+      localStorage.setItem('paios_vault_code', code.trim().toUpperCase());
+    } else {
+      localStorage.removeItem('paios_vault_code');
+    }
+  } catch (e) {
+    console.error('Failed to set saved vault code:', e);
+  }
+}
+
+// Auto-sync listener for local storage changes
+if (typeof window !== 'undefined') {
+  window.addEventListener('paios_storage_change', () => {
+    if (isApplyingRemoteUpdate) return;
+    const vaultCode = getSavedVaultCode();
+    if (vaultCode) {
+      syncLocalToVault(vaultCode);
+    } else if (auth.currentUser) {
+      syncLocalToCloud(auth.currentUser.uid);
+    }
+  });
+}
+
+// Save current local snapshot to Firestore (User or Vault)
 export async function syncLocalToCloud(userId: string): Promise<void> {
   if (isApplyingRemoteUpdate) return;
   try {
@@ -197,6 +231,69 @@ export async function syncLocalToCloud(userId: string): Promise<void> {
   } catch (err) {
     console.error('Failed to sync local data to Firestore:', err);
   }
+}
+
+// Sync local data to a Shared Vault Code (e.g. SYNC-1234)
+export async function syncLocalToVault(vaultCode: string): Promise<void> {
+  if (isApplyingRemoteUpdate || !vaultCode) return;
+  try {
+    const localData = getLocalSnapshot();
+    const vaultRef = doc(db, 'sync_vaults', vaultCode.trim().toUpperCase());
+    await setDoc(
+      vaultRef,
+      {
+        vaultCode: vaultCode.trim().toUpperCase(),
+        updatedBy: auth.currentUser?.uid || 'guest',
+        lastSyncedAt: Date.now(),
+        ...localData,
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error('Failed to sync local data to Vault:', err);
+  }
+}
+
+// Subscribe to Firestore changes on a Shared Vault Code
+export function listenToVaultData(
+  vaultCode: string,
+  onSyncComplete?: () => void
+): () => void {
+  if (!vaultCode) return () => {};
+  const vaultRef = doc(db, 'sync_vaults', vaultCode.trim().toUpperCase());
+
+  const unsubscribe = onSnapshot(
+    vaultRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const cloudData = snapshot.data();
+        isApplyingRemoteUpdate = true;
+
+        Object.entries(STORAGE_KEYS).forEach(([key, storageKey]) => {
+          if (cloudData[key] !== undefined && cloudData[key] !== null) {
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(cloudData[key]));
+            } catch (e) {
+              console.error(`Error applying vault update for ${storageKey}:`, e);
+            }
+          }
+        });
+
+        isApplyingRemoteUpdate = false;
+        window.dispatchEvent(new Event('paios_storage_change'));
+        if (onSyncComplete) onSyncComplete();
+      } else {
+        // Seed new vault with current local snapshot
+        syncLocalToVault(vaultCode);
+      }
+    },
+    (error) => {
+      console.error('Vault listener error:', error);
+      isApplyingRemoteUpdate = false;
+    }
+  );
+
+  return unsubscribe;
 }
 
 // Subscribe to Firestore changes and update local storage & state
