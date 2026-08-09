@@ -86,6 +86,7 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
     setTimeout(() => setCopiedDomain(false), 2000);
   };
 
+  const isAnonymousDisabledError = errorMsg === 'ANONYMOUS_DISABLED';
   const isUnauthorizedDomainError = Boolean(errorMsg && errorMsg.startsWith('UNAUTHORIZED_DOMAIN|'));
   const unauthorizedDomain = (isUnauthorizedDomainError && errorMsg) ? errorMsg.split('|')[1] : '';
 
@@ -170,7 +171,59 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
         </div>
       </div>
 
-      {isUnauthorizedDomainError ? (
+      {isAnonymousDisabledError ? (
+        <div className="p-4 bg-amber-950/50 border border-amber-700/60 rounded-xl space-y-3 text-xs">
+          <div className="flex items-center justify-between text-amber-300 font-bold text-sm">
+            <span>⚠️ Firebase Authentication Setup Needed</span>
+            <span className="text-[10px] bg-amber-900/80 border border-amber-600 px-2 py-0.5 rounded font-mono">
+              auth/admin-restricted-operation
+            </span>
+          </div>
+
+          <p className="text-slate-300 leading-relaxed">
+            Instant Anonymous Cloud Sync requires Anonymous Auth enabled in your Firebase Console, OR your domain added under Authorized Domains for Google SSO.
+          </p>
+
+          <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
+            <div className="font-bold text-slate-200">How to enable Cloud Sync in Firebase Console:</div>
+            
+            <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-lg space-y-1 text-[11px]">
+              <div className="font-bold text-emerald-400">Option A: Enable Google SSO Authorized Domain (Recommended)</div>
+              <p className="text-slate-300 text-[10.5px]">
+                In Firebase Console &rarr; <strong>Authentication</strong> &rarr; <strong>Settings</strong> &rarr; <strong>Authorized domains</strong>, click <strong>Add domain</strong> and paste your domain:
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="font-mono text-emerald-300 bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-[11px]">
+                  {window.location.hostname}
+                </span>
+                <button
+                  onClick={() => copyToClipboard(window.location.hostname)}
+                  className="px-2 py-0.5 bg-amber-800/80 hover:bg-amber-700 text-amber-100 rounded text-[10px] font-mono transition-colors"
+                >
+                  {copiedDomain ? 'Copied!' : 'Copy Domain'}
+                </button>
+              </div>
+            </div>
+
+            <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-lg space-y-1 text-[11px]">
+              <div className="font-bold text-indigo-400">Option B: Enable Anonymous Auth</div>
+              <p className="text-slate-300 text-[10.5px]">
+                In Firebase Console &rarr; <strong>Authentication</strong> &rarr; <strong>Sign-in method</strong> &rarr; click <strong>Anonymous</strong> &rarr; enable and save.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-1 gap-2">
+            <button
+              onClick={handleSignIn}
+              disabled={loading}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs transition-colors"
+            >
+              Retry Google SSO
+            </button>
+          </div>
+        </div>
+      ) : isUnauthorizedDomainError ? (
         <div className="p-4 bg-amber-950/50 border border-amber-700/60 rounded-xl space-y-3 text-xs">
           <div className="flex items-center justify-between text-amber-300 font-bold text-sm">
             <span>⚠️ Action Required: Add Authorized Domain to Firebase Console</span>

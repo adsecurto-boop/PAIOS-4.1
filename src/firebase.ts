@@ -62,6 +62,9 @@ export async function signInWithGuestSync(): Promise<User> {
     const result = await signInAnonymously(auth);
     return result.user;
   } catch (err: any) {
+    if (err?.code === 'auth/admin-restricted-operation' || err?.message?.includes('admin-restricted-operation')) {
+      throw new Error('ANONYMOUS_DISABLED');
+    }
     console.error('Guest Sync Sign In error:', err);
     throw err;
   }
