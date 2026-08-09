@@ -7,6 +7,7 @@ let mainWindow;
 
 // User configuration file path for auto-update & live sync
 const configPath = path.join(app.getPath('userData'), 'paios-config.json');
+const DEFAULT_LIVE_URL = 'https://paios-4-1.vercel.app';
 
 function loadConfig() {
   try {
@@ -17,7 +18,7 @@ function loadConfig() {
   } catch (err) {
     console.error('Failed to load paios-config.json:', err);
   }
-  return { liveUrl: '', autoUpdateCheck: true };
+  return { liveUrl: DEFAULT_LIVE_URL, autoUpdateCheck: true };
 }
 
 function saveConfig(config) {
@@ -50,8 +51,8 @@ function createWindow() {
 
   const distIndex = path.join(__dirname, 'dist', 'index.html');
   
-  // Decide target URL: Environment Variable > Saved Live URL > Development Server > Local Dist Index
-  const remoteUrl = process.env.PAIOS_REMOTE_URL || config.liveUrl;
+  // Decide target URL: Environment Variable > Saved Live URL > Default Vercel App > Local Dist Index
+  const remoteUrl = process.env.PAIOS_REMOTE_URL || config.liveUrl || DEFAULT_LIVE_URL;
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:3000');

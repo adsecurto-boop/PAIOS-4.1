@@ -296,15 +296,15 @@ pause`;
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Method 1: Live Cloud Sync Mode (0 Rebuilds Needed)
+                    Method 1: Live Sync via Vercel (0 Rebuilds Needed - Preconfigured!)
                   </span>
                   <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded font-mono">
-                    Instant Updates
+                    Configured: https://paios-4-1.vercel.app
                   </span>
                 </div>
                 <p className="text-slate-400 text-[11px]">
-                  When you deploy your web app (e.g. to Vercel, Cloud Run, or GitHub Pages), set the <code className="text-indigo-300 font-mono">PAIOS_REMOTE_URL</code> variable or set your live URL in <code className="text-indigo-300 font-mono">electron-main.cjs</code>.
-                  Every time you <code className="text-emerald-300 font-mono">git push</code>, the desktop app will load the updated app instantly on launch or pressing <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-200 rounded font-mono text-[10px]">Ctrl+Shift+R</kbd>!
+                  Your desktop app is preconfigured to auto-load <code className="text-emerald-300 font-mono">https://paios-4-1.vercel.app</code> in <code className="text-indigo-300 font-mono">electron-main.cjs</code>.
+                  Every time you <code className="text-emerald-300 font-mono">git push</code>, Vercel deploys the code and PAIOS Desktop updates automatically on open or when pressing <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-200 rounded font-mono text-[10px]">Ctrl+Shift+R</kbd>!
                 </p>
               </div>
 
