@@ -693,13 +693,51 @@ export const storage = {
     return JSON.stringify(backup, null, 2);
   },
   getUserContextString(): string {
+    const now = new Date();
     const active = this.getActiveActivity();
     const tasks = this.getTasks();
-    const timeline = this.getAllTimeline().slice(0, 5);
+    const timeline = this.getAllTimeline().slice(0, 10);
+    const todayDateStr = getTodayDateString();
+    const todayCheckIn = this.getMorningCheckIn();
+    const todayReview = this.getEveningReview();
+    const captures = this.getAllCaptures().slice(0, 5);
+    const journal = this.getJournalEntries().slice(0, 3);
+
+    const formatTime = (ms?: number | null) => {
+      if (!ms) return 'N/A';
+      const d = new Date(ms);
+      return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    };
+
     return `
-Active Activity: ${active ? `${active.activityName} (${active.category})` : 'None'}
-Pending Tasks: ${tasks.filter((t) => t.status !== 'COMPLETED').map((t) => t.title).join(', ') || 'None'}
-Recent Activity Log: ${timeline.map((t) => `${t.title} [${t.category}]`).join('; ') || 'None'}
+CURRENT LOCAL TIME & DATE METADATA:
+- Current Date: ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (${todayDateStr})
+- Current Local Time: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+- Unix Timestamp: ${now.getTime()}
+
+ACTIVE SESSION / ACTIVITY:
+${active ? `- Currently Active: "${active.activityName}" [Category: ${active.category}] | Started At: ${formatTime(active.startTimeMillis)} | Running Duration: ${Math.floor((now.getTime() - active.startTimeMillis) / 60000)} minutes` : '- No active session currently running.'}
+
+TODAY'S MORNING CHECK-IN (${todayDateStr}):
+${todayCheckIn ? `- Goal: "${todayCheckIn.mainGoal}" | Top Priority: "${todayCheckIn.priority1}" | Energy Level: ${todayCheckIn.energy}/10 | Mood: ${todayCheckIn.mood}/10 | Logged At: ${formatTime(todayCheckIn.createdAtMillis)}` : '- Morning Check-in not yet recorded for today.'}
+
+TODAY'S EVENING REVIEW (${todayDateStr}):
+${todayReview ? `- Rating: ${todayReview.rating}/10 | What Went Well: "${todayReview.wentWell}" | What Didn't Go Well: "${todayReview.didntGoWell}" | Learned: "${todayReview.learnedText}" | Logged At: ${formatTime(todayReview.createdAtMillis)}` : '- Evening Review not yet recorded for today.'}
+
+PENDING & IN-PROGRESS TASKS:
+${tasks.filter((t) => t.status !== 'COMPLETED').map((t) => `- [${t.priority}] "${t.title}" (${t.category}) | Status: ${t.status} | Created At: ${formatTime(t.createdAtMillis)}`).join('\n') || '- No pending tasks.'}
+
+RECENTLY COMPLETED TASKS:
+${tasks.filter((t) => t.status === 'COMPLETED').slice(0, 5).map((t) => `- "${t.title}" (${t.category}) | Completed At: ${formatTime(t.completedAtMillis)}`).join('\n') || '- No completed tasks recorded.'}
+
+RECENT TIMELINE & ACTIVITY LOGS (Most Recent First):
+${timeline.map((t) => `- [${formatTime(t.timestampMillis)}] ${t.title} (${t.category}) ${t.durationMinutes ? `| Duration: ${t.durationMinutes}m` : ''} ${t.note ? `| Note: ${t.note}` : ''}`).join('\n') || '- No timeline entries.'}
+
+RECENT QUICK CAPTURES / NOTES:
+${captures.map((c) => `- [${formatTime(c.createdAtMillis)}] "${c.text}"`).join('\n') || '- No quick captures.'}
+
+RECENT JOURNAL ENTRIES:
+${journal.map((j) => `- [${formatTime(j.createdAtMillis)}] "${j.title}" (Mood Score: ${j.moodScore || 5}/10) | Preview: "${j.content.slice(0, 80)}..."`).join('\n') || '- No journal entries.'}
     `.trim();
   },
 };
