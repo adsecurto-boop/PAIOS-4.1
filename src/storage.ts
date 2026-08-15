@@ -12,8 +12,6 @@ import {
   SearchResults,
 } from './types';
 
-import { auth, syncLocalToCloud } from './firebase';
-
 const STORAGE_KEYS = {
   TASKS: 'paios_tasks_v1',
   ACTIVITIES: 'paios_activities_v1',

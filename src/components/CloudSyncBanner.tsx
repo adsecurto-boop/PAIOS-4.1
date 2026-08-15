@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { User } from 'firebase/auth';
 import { Cloud, LogOut, RefreshCw, Sparkles, ShieldCheck, Mail, Key, UserCheck, ArrowRight, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
   auth,
@@ -17,6 +16,7 @@ import {
   getSavedVaultCode,
   setSavedVaultCode,
   isQuotaExceeded,
+  PaiosUser,
 } from '../firebase';
 
 interface CloudSyncBannerProps {
@@ -25,7 +25,7 @@ interface CloudSyncBannerProps {
 }
 
 export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete, compact }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
+  const [currentUser, setCurrentUser] = useState<PaiosUser | null>(auth.currentUser);
   const [loading, setLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);

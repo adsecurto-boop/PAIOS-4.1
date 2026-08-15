@@ -18,6 +18,108 @@ async function startServer() {
     res.json({ status: 'ok', app: 'PAIOS' });
   });
 
+  // Cross-Device REST Sync API Store
+  interface SyncRecord {
+    snapshot: Record<string, any>;
+    updatedAt: number;
+  }
+
+  const vaultStore = new Map<string, SyncRecord>();
+  const userStore = new Map<string, SyncRecord>();
+  const authStore = new Map<string, { uid: string; email: string; password?: string; displayName: string }>();
+
+  // Vault Sync Endpoints
+  app.get('/api/sync/vault/:code', (req, res) => {
+    const code = req.params.code.trim().toUpperCase();
+    const record = vaultStore.get(code);
+    res.json({
+      success: true,
+      snapshot: record?.snapshot || null,
+      updatedAt: record?.updatedAt || 0,
+    });
+  });
+
+  app.post('/api/sync/vault/:code', (req, res) => {
+    const code = req.params.code.trim().toUpperCase();
+    const { snapshot } = req.body;
+    if (!snapshot) {
+      res.status(400).json({ error: 'Missing snapshot' });
+      return;
+    }
+    const updatedAt = Date.now();
+    vaultStore.set(code, { snapshot, updatedAt });
+    res.json({ success: true, snapshot, updatedAt });
+  });
+
+  // User Cloud Sync Endpoints
+  app.get('/api/sync/user/:userId', (req, res) => {
+    const userId = req.params.userId.trim();
+    const record = userStore.get(userId);
+    res.json({
+      success: true,
+      snapshot: record?.snapshot || null,
+      updatedAt: record?.updatedAt || 0,
+    });
+  });
+
+  app.post('/api/sync/user/:userId', (req, res) => {
+    const userId = req.params.userId.trim();
+    const { snapshot } = req.body;
+    if (!snapshot) {
+      res.status(400).json({ error: 'Missing snapshot' });
+      return;
+    }
+    const updatedAt = Date.now();
+    userStore.set(userId, { snapshot, updatedAt });
+    res.json({ success: true, snapshot, updatedAt });
+  });
+
+  // User Auth Endpoint
+  app.post('/api/sync/auth', (req, res) => {
+    const { action, email, password, displayName } = req.body;
+
+    if (action === 'guest') {
+      const guestUid = `guest_${Math.random().toString(36).substring(2, 9)}`;
+      const user = { uid: guestUid, email: null, displayName: 'Guest User' };
+      res.json({ success: true, user });
+      return;
+    }
+
+    if (action === 'signup') {
+      if (!email || !password) {
+        res.status(400).json({ error: 'Email and password are required' });
+        return;
+      }
+      const lowerEmail = email.toLowerCase();
+      if (authStore.has(lowerEmail)) {
+        res.status(400).json({ error: 'This email is already registered. Please sign in instead.' });
+        return;
+      }
+      const uid = `user_${Math.random().toString(36).substring(2, 11)}`;
+      const newUser = { uid, email: lowerEmail, password, displayName: displayName || email.split('@')[0] };
+      authStore.set(lowerEmail, newUser);
+      res.json({ success: true, user: { uid: newUser.uid, email: newUser.email, displayName: newUser.displayName } });
+      return;
+    }
+
+    if (action === 'login') {
+      if (!email || !password) {
+        res.status(400).json({ error: 'Email and password are required' });
+        return;
+      }
+      const lowerEmail = email.toLowerCase();
+      const existing = authStore.get(lowerEmail);
+      if (!existing || existing.password !== password) {
+        res.status(401).json({ error: 'Invalid email or password.' });
+        return;
+      }
+      res.json({ success: true, user: { uid: existing.uid, email: existing.email, displayName: existing.displayName } });
+      return;
+    }
+
+    res.status(400).json({ error: 'Invalid action' });
+  });
+
   // API Endpoint: Gemini AI Chat
   app.post('/api/ai/chat', async (req, res) => {
     try {
