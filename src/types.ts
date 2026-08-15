@@ -1,7 +1,7 @@
 export type PriorityLevel = "LOW" | "NORMAL" | "HIGH" | "CRITICAL";
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
-export type Category = "Work" | "Study" | "Coding" | "Testing" | "Personal" | "Exercise" | "Break" | "Other";
-export type TimelineType = "ACTIVITY" | "TASK" | "CAPTURE" | "CHECKIN" | "JOURNAL";
+export type Category = "Work" | "Study" | "Coding" | "Testing" | "Personal" | "Exercise" | "Break" | "Health" | "Other";
+export type TimelineType = "ACTIVITY" | "TASK" | "CAPTURE" | "CHECKIN" | "JOURNAL" | "DOSE" | "VITAL";
 
 export interface Task {
   id: number;
@@ -15,6 +15,7 @@ export interface Task {
   estimatedDurationMinutes?: number | null;
   createdAtMillis: number;
   completedAtMillis?: number | null;
+  safetyWarning?: string | null;
 }
 
 export interface ActivityLog {
@@ -99,12 +100,71 @@ export interface StudyCard {
   easeFactor: number;
 }
 
+// Health & Medication Management Interfaces
+export interface Medication {
+  id: string;
+  genericName: string;
+  brandName: string;
+  dosageStrength: number;
+  dosageUnit: string; // mg, mcg, mL
+  form: string; // tablet, capsule, sustained_release_tablet, liquid
+  route: string; // oral, sublingual
+  status: 'active' | 'historical' | 'discontinued';
+  rxNormCui?: string;
+  instructions: string;
+  scheduleTimes: string[]; // ['08:00', '22:00']
+  foodRelation?: 'before_meals' | 'with_meals' | 'after_meals' | 'empty_stomach' | 'no_restriction';
+  createdAtMillis: number;
+  prescribingDoctor?: string;
+}
+
+export type DoseStatus = 'SCHEDULED' | 'TAKEN' | 'TAKEN_LATE' | 'SKIPPED' | 'MISSED';
+
+export interface DoseEvent {
+  id: string;
+  medicationId: string;
+  medicationName: string;
+  dosage: string;
+  scheduledTime: string; // '08:00', '21:00'
+  scheduledDateString: string; // 'YYYY-MM-DD'
+  status: DoseStatus;
+  actualTakenTimeMillis?: number | null;
+  note?: string | null;
+}
+
+export interface RefillInventory {
+  id: string;
+  medicationId: string;
+  medicationName: string;
+  quantityRemaining: number;
+  unit: string;
+  dailyBurnRate: number;
+  minimumThresholdDays: number;
+  pharmacyName?: string;
+  pharmacyPhone?: string;
+  refillsRemaining: number;
+  lastRefillDateString?: string;
+}
+
+export interface VitalSign {
+  id: string;
+  timestampMillis: number;
+  systolicBp?: number | null;
+  diastolicBp?: number | null;
+  restingHeartRate?: number | null;
+  weightKg?: number | null;
+  dizzinessSeverity?: number | null; // 1-10
+  sedationSeverity?: number | null; // 1-10
+  symptoms?: string | null;
+  note?: string | null;
+}
+
 export interface AIMessage {
   id: number;
   sender?: "USER" | "AI";
   isUser?: boolean;
   text: string;
-  actionType?: "ADD_TASK" | "START_ACTIVITY" | "SAVE_NOTE" | null;
+  actionType?: "ADD_TASK" | "START_ACTIVITY" | "SAVE_NOTE" | "LOG_DOSE" | "LOG_SYMPTOM" | null;
   actionPayloadJson?: string | null;
   isActionConfirmed?: boolean | null;
   timestampMillis: number;
@@ -130,12 +190,14 @@ export interface SearchResults {
   captures: QuickCapture[];
   journal: JournalEntry[];
   studyCards: StudyCard[];
+  medications?: Medication[];
 }
 
 export enum NavTab {
   TODAY = "TODAY",
   TIMELINE = "TIMELINE",
   TASKS = "TASKS",
+  HEALTH = "HEALTH",
   LEARN = "LEARN",
   INSIGHTS = "INSIGHTS",
   AI = "AI",

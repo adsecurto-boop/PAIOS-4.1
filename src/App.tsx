@@ -12,7 +12,7 @@ import {
   Play,
   Zap,
 } from 'lucide-react';
-import { NavTab, ActivityLog, Task, TimelineEntry, StudyCard, JournalEntry, MorningCheckIn, EveningReview, AiChatMessage, UserSettings, SearchResults } from './types';
+import { NavTab, ActivityLog, Task, TimelineEntry, StudyCard, JournalEntry, MorningCheckIn, EveningReview, AiChatMessage, UserSettings, SearchResults, Medication, DoseEvent, DoseStatus, RefillInventory, VitalSign } from './types';
 import { PAIOSStorage } from './storage';
 import { TopHeaderBar } from './components/TopHeaderBar';
 import { MiniTimerPlayer } from './components/MiniTimerPlayer';
@@ -28,6 +28,7 @@ import { SearchModal } from './components/SearchModal';
 import { TodayScreen } from './screens/TodayScreen';
 import { TimelineScreen } from './screens/TimelineScreen';
 import { TasksScreen } from './screens/TasksScreen';
+import { HealthScreen } from './screens/HealthScreen';
 import { LearnScreen } from './screens/LearnScreen';
 import { InsightsScreen } from './screens/InsightsScreen';
 import { AiScreen } from './screens/AiScreen';
@@ -57,6 +58,12 @@ export const App: React.FC = () => {
   const [aiMessages, setAiMessages] = useState<AiChatMessage[]>([]);
   const [settings, setSettings] = useState<UserSettings>(PAIOSStorage.getSettings());
 
+  // Health State
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [doseEvents, setDoseEvents] = useState<DoseEvent[]>([]);
+  const [refillInventories, setRefillInventories] = useState<RefillInventory[]>([]);
+  const [vitalSigns, setVitalSigns] = useState<VitalSign[]>([]);
+
   // Search
   const [searchResults, setSearchResults] = useState<SearchResults>({
     tasks: [],
@@ -64,6 +71,7 @@ export const App: React.FC = () => {
     captures: [],
     journal: [],
     studyCards: [],
+    medications: [],
   });
 
   // Modals
@@ -90,6 +98,10 @@ export const App: React.FC = () => {
     setReviews(PAIOSStorage.getReviews());
     setAiMessages(PAIOSStorage.getAiMessages());
     setSettings(PAIOSStorage.getSettings());
+    setMedications(PAIOSStorage.getMedications());
+    setDoseEvents(PAIOSStorage.getDoseEvents());
+    setRefillInventories(PAIOSStorage.getRefillInventories());
+    setVitalSigns(PAIOSStorage.getVitalSigns());
   };
 
   useEffect(() => {
@@ -346,6 +358,27 @@ export const App: React.FC = () => {
     }
   };
 
+  // Health Handlers
+  const handleLogDose = (doseId: string, status: DoseStatus, note?: string) => {
+    PAIOSStorage.logDoseEvent(doseId, status, note);
+    reloadState();
+  };
+
+  const handleUpdateRefill = (id: string, newQty: number) => {
+    PAIOSStorage.updateRefillQuantity(id, newQty, true);
+    reloadState();
+  };
+
+  const handleLogVital = (vital: Omit<VitalSign, 'id' | 'timestampMillis'>) => {
+    PAIOSStorage.logVitalSign(vital);
+    reloadState();
+  };
+
+  const handleAddMedication = (med: Medication) => {
+    PAIOSStorage.saveMedication(med);
+    reloadState();
+  };
+
   // AI Action Execution
   const handleExecuteAiAction = (actionType: string, actionPayloadJson: string) => {
     try {
@@ -356,6 +389,17 @@ export const App: React.FC = () => {
         PAIOSStorage.startActivity(payload.name || 'AI Session', payload.category || 'Work', 'Started via PAIOS AI');
       } else if (actionType === 'SAVE_NOTE' || payload.type === 'SAVE_NOTE') {
         PAIOSStorage.addQuickCaptureNote(payload.text || 'AI Note', 'Personal');
+      } else if (actionType === 'LOG_DOSE' || payload.type === 'LOG_DOSE') {
+        const doseList = PAIOSStorage.getDoseEvents();
+        const targetDose = doseList.find((d) => d.medicationName.toLowerCase().includes((payload.medicationName || '').toLowerCase()));
+        if (targetDose) {
+          PAIOSStorage.logDoseEvent(targetDose.id, payload.status || 'TAKEN', 'Logged via PAIOS AI');
+        }
+      } else if (actionType === 'LOG_SYMPTOM' || payload.type === 'LOG_SYMPTOM') {
+        PAIOSStorage.logVitalSign({
+          symptoms: `${payload.symptomName || 'Symptom'} (Severity: ${payload.severity || 1}/10)`,
+          dizzinessSeverity: payload.symptomName?.toLowerCase().includes('dizz') ? payload.severity : undefined,
+        });
       }
       reloadState();
     } catch (e) {
@@ -456,6 +500,19 @@ export const App: React.FC = () => {
                   onToggleTaskPriorityPin={handleToggleTaskPriority}
                   onDeleteTask={handleDeleteTask}
                   onOpenAddTask={() => setShowTaskModal(true)}
+                />
+              )}
+
+              {activeTab === NavTab.HEALTH && (
+                <HealthScreen
+                  medications={medications}
+                  doseEvents={doseEvents}
+                  refillInventories={refillInventories}
+                  vitalSigns={vitalSigns}
+                  onLogDose={handleLogDose}
+                  onUpdateRefill={handleUpdateRefill}
+                  onLogVital={handleLogVital}
+                  onAddMedication={handleAddMedication}
                 />
               )}
 

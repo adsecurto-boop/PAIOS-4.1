@@ -10,6 +10,11 @@ import {
   AIMessage,
   UserSettings,
   SearchResults,
+  Medication,
+  DoseEvent,
+  DoseStatus,
+  RefillInventory,
+  VitalSign,
 } from './types';
 
 const STORAGE_KEYS = {
@@ -24,6 +29,10 @@ const STORAGE_KEYS = {
   STUDY_CARDS: 'paios_study_cards_v1',
   AI_MESSAGES: 'paios_ai_messages_v1',
   SETTINGS: 'paios_settings_v1',
+  MEDICATIONS: 'paios_medications_v1',
+  DOSE_EVENTS: 'paios_dose_events_v1',
+  REFILLS: 'paios_refills_v1',
+  VITALS: 'paios_vitals_v1',
 };
 
 export function getTodayDateString(): string {
@@ -39,6 +48,173 @@ export function getStartOfDayMillis(): number {
   now.setHours(0, 0, 0, 0);
   return now.getTime();
 }
+
+// Initial Sample Medications (Clinical Standard Sample Regimen)
+const initialMedications: Medication[] = [
+  {
+    id: 'med_1',
+    genericName: 'Sertraline HCl',
+    brandName: 'Zoloft',
+    dosageStrength: 50,
+    dosageUnit: 'mg',
+    form: 'tablet',
+    route: 'oral',
+    status: 'active',
+    rxNormCui: '312940',
+    instructions: 'Take 1 tablet every morning with food.',
+    scheduleTimes: ['08:00'],
+    foodRelation: 'with_meals',
+    createdAtMillis: Date.now() - 86400000 * 30,
+    prescribingDoctor: 'Dr. Sarah Jenkins (Psychiatry)',
+  },
+  {
+    id: 'med_2',
+    genericName: 'Propranolol HCl SR',
+    brandName: 'Inderal LA',
+    dosageStrength: 40,
+    dosageUnit: 'mg',
+    form: 'sustained_release_tablet',
+    route: 'oral',
+    status: 'active',
+    rxNormCui: '854854',
+    instructions: 'Take 1 sustained-release capsule every morning.',
+    scheduleTimes: ['08:00'],
+    foodRelation: 'no_restriction',
+    createdAtMillis: Date.now() - 86400000 * 30,
+    prescribingDoctor: 'Dr. Robert Vance (Cardiology)',
+  },
+  {
+    id: 'med_3',
+    genericName: 'Clomipramine HCl',
+    brandName: 'Anafranil',
+    dosageStrength: 25,
+    dosageUnit: 'mg',
+    form: 'capsule',
+    route: 'oral',
+    status: 'active',
+    rxNormCui: '197517',
+    instructions: 'Take 1 capsule in the evening at 9:00 PM.',
+    scheduleTimes: ['21:00'],
+    foodRelation: 'after_meals',
+    createdAtMillis: Date.now() - 86400000 * 20,
+    prescribingDoctor: 'Dr. Sarah Jenkins (Psychiatry)',
+  },
+  {
+    id: 'med_4',
+    genericName: 'Quetiapine',
+    brandName: 'Seroquel',
+    dosageStrength: 100,
+    dosageUnit: 'mg',
+    form: 'tablet',
+    route: 'oral',
+    status: 'active',
+    rxNormCui: '284205',
+    instructions: 'Take 1 tablet at bedtime (10:00 PM). May cause sedation.',
+    scheduleTimes: ['22:00'],
+    foodRelation: 'no_restriction',
+    createdAtMillis: Date.now() - 86400000 * 45,
+    prescribingDoctor: 'Dr. Sarah Jenkins (Psychiatry)',
+  },
+  {
+    id: 'med_5',
+    genericName: 'Clonazepam',
+    brandName: 'Klonopin',
+    dosageStrength: 0.5,
+    dosageUnit: 'mg',
+    form: 'tablet',
+    route: 'oral',
+    status: 'active',
+    rxNormCui: '197524',
+    instructions: 'Take 1 tablet at bedtime (10:00 PM) as directed.',
+    scheduleTimes: ['22:00'],
+    foodRelation: 'no_restriction',
+    createdAtMillis: Date.now() - 86400000 * 15,
+    prescribingDoctor: 'Dr. Sarah Jenkins (Psychiatry)',
+  },
+];
+
+const initialRefills: RefillInventory[] = [
+  {
+    id: 'refill_1',
+    medicationId: 'med_1',
+    medicationName: 'Sertraline HCl 50 mg',
+    quantityRemaining: 24,
+    unit: 'tablets',
+    dailyBurnRate: 1,
+    minimumThresholdDays: 7,
+    pharmacyName: 'CVS Pharmacy #4821',
+    pharmacyPhone: '(555) 019-2831',
+    refillsRemaining: 3,
+    lastRefillDateString: '2026-08-01',
+  },
+  {
+    id: 'refill_2',
+    medicationId: 'med_2',
+    medicationName: 'Propranolol HCl SR 40 mg',
+    quantityRemaining: 22,
+    unit: 'capsules',
+    dailyBurnRate: 1,
+    minimumThresholdDays: 7,
+    pharmacyName: 'CVS Pharmacy #4821',
+    pharmacyPhone: '(555) 019-2831',
+    refillsRemaining: 2,
+    lastRefillDateString: '2026-08-01',
+  },
+  {
+    id: 'refill_3',
+    medicationId: 'med_3',
+    medicationName: 'Clomipramine HCl 25 mg',
+    quantityRemaining: 15,
+    unit: 'capsules',
+    dailyBurnRate: 1,
+    minimumThresholdDays: 7,
+    pharmacyName: 'CVS Pharmacy #4821',
+    pharmacyPhone: '(555) 019-2831',
+    refillsRemaining: 1,
+    lastRefillDateString: '2026-08-01',
+  },
+  {
+    id: 'refill_4',
+    medicationId: 'med_4',
+    medicationName: 'Quetiapine 100 mg',
+    quantityRemaining: 5, // CRITICAL REFILL WARNING (< 7 days left)
+    unit: 'tablets',
+    dailyBurnRate: 1,
+    minimumThresholdDays: 7,
+    pharmacyName: 'CVS Pharmacy #4821',
+    pharmacyPhone: '(555) 019-2831',
+    refillsRemaining: 1,
+    lastRefillDateString: '2026-07-20',
+  },
+  {
+    id: 'refill_5',
+    medicationId: 'med_5',
+    medicationName: 'Clonazepam 0.5 mg',
+    quantityRemaining: 18,
+    unit: 'tablets',
+    dailyBurnRate: 1,
+    minimumThresholdDays: 7,
+    pharmacyName: 'CVS Pharmacy #4821',
+    pharmacyPhone: '(555) 019-2831',
+    refillsRemaining: 0,
+    lastRefillDateString: '2026-08-01',
+  },
+];
+
+const initialVitals: VitalSign[] = [
+  {
+    id: 'vital_1',
+    timestampMillis: Date.now() - 3600000 * 4,
+    systolicBp: 116,
+    diastolicBp: 74,
+    restingHeartRate: 66,
+    weightKg: 72.5,
+    dizzinessSeverity: 1,
+    sedationSeverity: 2,
+    symptoms: 'Mild morning grogginess upon waking.',
+    note: 'Routine morning vital check.',
+  },
+];
 
 // Initial Seeds
 const initialSettings: UserSettings = {
@@ -651,9 +827,127 @@ export const storage = {
   searchAll(query: string): SearchResults {
     return this.globalSearch(query);
   },
+  // --- HEALTH & MEDICATION MANAGEMENT ENGINE ---
+  getMedications(): Medication[] {
+    return load(STORAGE_KEYS.MEDICATIONS, initialMedications);
+  },
+  saveMedication(med: Medication): Medication {
+    const list = this.getMedications();
+    const idx = list.findIndex((m) => m.id === med.id);
+    if (idx >= 0) {
+      list[idx] = med;
+    } else {
+      list.unshift(med);
+    }
+    save(STORAGE_KEYS.MEDICATIONS, list);
+    return med;
+  },
+  deleteMedication(id: string): void {
+    const list = this.getMedications().filter((m) => m.id !== id);
+    save(STORAGE_KEYS.MEDICATIONS, list);
+  },
+  getRefillInventories(): RefillInventory[] {
+    return load(STORAGE_KEYS.REFILLS, initialRefills);
+  },
+  updateRefillQuantity(id: string, deltaOrAbsolute: number, isAbsolute: boolean = false): RefillInventory | null {
+    const refills = this.getRefillInventories();
+    const item = refills.find((r) => r.id === id || r.medicationId === id);
+    if (!item) return null;
+    if (isAbsolute) {
+      item.quantityRemaining = Math.max(0, deltaOrAbsolute);
+    } else {
+      item.quantityRemaining = Math.max(0, item.quantityRemaining + deltaOrAbsolute);
+    }
+    save(STORAGE_KEYS.REFILLS, refills);
+    return item;
+  },
+  getVitalSigns(): VitalSign[] {
+    return load(STORAGE_KEYS.VITALS, initialVitals);
+  },
+  logVitalSign(vital: Omit<VitalSign, 'id' | 'timestampMillis'>): VitalSign {
+    const list = this.getVitalSigns();
+    const newVital: VitalSign = {
+      ...vital,
+      id: `vital_${Date.now()}`,
+      timestampMillis: Date.now(),
+    };
+    list.unshift(newVital);
+    save(STORAGE_KEYS.VITALS, list);
+
+    this.addTimelineEntry({
+      title: `Vitals & Symptoms Logged ${vital.symptoms ? `(${vital.symptoms})` : ''}`,
+      category: 'Health',
+      timestampMillis: Date.now(),
+      note: `BP: ${vital.systolicBp || '--'}/${vital.diastolicBp || '--'} mmHg | HR: ${vital.restingHeartRate || '--'} bpm ${vital.dizzinessSeverity ? `| Dizziness: ${vital.dizzinessSeverity}/10` : ''}`,
+      type: 'VITAL',
+    });
+
+    return newVital;
+  },
+  getDoseEvents(dateStr?: string): DoseEvent[] {
+    const date = dateStr || getTodayDateString();
+    const allEvents: Record<string, DoseEvent[]> = load(STORAGE_KEYS.DOSE_EVENTS, {});
+    
+    if (!allEvents[date]) {
+      // Auto-generate dose events for active medications for this date
+      const meds = this.getMedications().filter((m) => m.status === 'active');
+      const generated: DoseEvent[] = [];
+      meds.forEach((m) => {
+        m.scheduleTimes.forEach((time) => {
+          generated.push({
+            id: `dose_${m.id}_${date}_${time.replace(':', '')}`,
+            medicationId: m.id,
+            medicationName: `${m.genericName} ${m.dosageStrength}${m.dosageUnit}`,
+            dosage: `${m.dosageStrength} ${m.dosageUnit}`,
+            scheduledTime: time,
+            scheduledDateString: date,
+            status: 'SCHEDULED',
+            actualTakenTimeMillis: null,
+            note: null,
+          });
+        });
+      });
+      allEvents[date] = generated;
+      save(STORAGE_KEYS.DOSE_EVENTS, allEvents);
+    }
+
+    return allEvents[date] || [];
+  },
+  logDoseEvent(doseId: string, status: DoseStatus, note?: string): DoseEvent | null {
+    const date = getTodayDateString();
+    const allEvents: Record<string, DoseEvent[]> = load(STORAGE_KEYS.DOSE_EVENTS, {});
+    const todayEvents = allEvents[date] || this.getDoseEvents(date);
+    
+    const dose = todayEvents.find((d) => d.id === doseId);
+    if (!dose) return null;
+
+    dose.status = status;
+    dose.actualTakenTimeMillis = Date.now();
+    if (note) dose.note = note;
+
+    allEvents[date] = todayEvents;
+    save(STORAGE_KEYS.DOSE_EVENTS, allEvents);
+
+    // Update refill count if dose taken
+    if (status === 'TAKEN' || status === 'TAKEN_LATE') {
+      this.updateRefillQuantity(dose.medicationId, -1, false);
+    }
+
+    // Add to timeline ledger
+    this.addTimelineEntry({
+      title: `Medication Dose: ${dose.medicationName} marked ${status}`,
+      category: 'Health',
+      timestampMillis: Date.now(),
+      note: `Scheduled for ${dose.scheduledTime} | Status: ${status} ${note ? `| Note: ${note}` : ''}`,
+      type: 'DOSE',
+    });
+
+    return dose;
+  },
+
   globalSearch(query: string): SearchResults {
     if (!query.trim()) {
-      return { tasks: [], timeline: [], captures: [], journal: [], studyCards: [] };
+      return { tasks: [], timeline: [], captures: [], journal: [], studyCards: [], medications: [] };
     }
     const q = query.toLowerCase();
     return {
@@ -663,6 +957,9 @@ export const storage = {
       journal: this.getJournalEntries().filter((j) => j.title.toLowerCase().includes(q) || j.content.toLowerCase().includes(q)),
       studyCards: this.getStudyCards().filter(
         (s) => s.topic.toLowerCase().includes(q) || s.question.toLowerCase().includes(q) || s.answer.toLowerCase().includes(q)
+      ),
+      medications: this.getMedications().filter(
+        (m) => m.genericName.toLowerCase().includes(q) || m.brandName.toLowerCase().includes(q) || m.instructions.toLowerCase().includes(q)
       ),
     };
   },
@@ -681,6 +978,10 @@ export const storage = {
     save(STORAGE_KEYS.STUDY_CARDS, initialStudyCards);
     save(STORAGE_KEYS.AI_MESSAGES, initialAiMessages);
     save(STORAGE_KEYS.SETTINGS, initialSettings);
+    save(STORAGE_KEYS.MEDICATIONS, initialMedications);
+    save(STORAGE_KEYS.REFILLS, initialRefills);
+    save(STORAGE_KEYS.VITALS, initialVitals);
+    save(STORAGE_KEYS.DOSE_EVENTS, {});
   },
   clearAllData(): void {
     Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
@@ -702,6 +1003,14 @@ export const storage = {
     const todayReview = this.getEveningReview();
     const captures = this.getAllCaptures().slice(0, 5);
     const journal = this.getJournalEntries().slice(0, 3);
+    
+    // Health Context Data
+    const medications = this.getMedications().filter((m) => m.status === 'active');
+    const doseEvents = this.getDoseEvents(todayDateStr);
+    const refills = this.getRefillInventories();
+    const vitals = this.getVitalSigns().slice(0, 3);
+
+    const lowSupplyRefills = refills.filter((r) => r.quantityRemaining / (r.dailyBurnRate || 1) <= r.minimumThresholdDays);
 
     const formatTime = (ms?: number | null) => {
       if (!ms) return 'N/A';
@@ -718,6 +1027,19 @@ CURRENT LOCAL TIME & DATE METADATA:
 ACTIVE SESSION / ACTIVITY:
 ${active ? `- Currently Active: "${active.activityName}" [Category: ${active.category}] | Started At: ${formatTime(active.startTimeMillis)} | Running Duration: ${Math.floor((now.getTime() - active.startTimeMillis) / 60000)} minutes` : '- No active session currently running.'}
 
+HEALTH & MEDICATION REGIMEN STATUS (TODAY: ${todayDateStr}):
+- Active Medications (${medications.length}):
+${medications.map((m) => `  * ${m.genericName} (${m.brandName}) ${m.dosageStrength}${m.dosageUnit} [RxNorm CUI: ${m.rxNormCui || 'N/A'}] - Schedule: ${m.scheduleTimes.join(', ')} (${m.instructions})`).join('\n') || '  * No active medications.'}
+
+- Today's Dose Ledger (${todayDateStr}):
+${doseEvents.map((d) => `  * [${d.scheduledTime}] ${d.medicationName} -> Status: ${d.status} ${d.actualTakenTimeMillis ? `(Logged at ${formatTime(d.actualTakenTimeMillis)})` : ''}`).join('\n') || '  * No dose events generated yet.'}
+
+- Refill Vault Inventory Warnings:
+${lowSupplyRefills.map((r) => `  ⚠️ LOW SUPPLY ALERT: ${r.medicationName} has only ${r.quantityRemaining} ${r.unit} remaining (${r.quantityRemaining / (r.dailyBurnRate || 1)} days supply left). Threshold: ${r.minimumThresholdDays} days. Contact ${r.pharmacyName || 'Pharmacy'} ${r.pharmacyPhone ? `(${r.pharmacyPhone})` : ''}`).join('\n') || '  * All medication inventories are adequately supplied.'}
+
+- Latest Vitals & Symptom Telemetry:
+${vitals.map((v) => `  * [${formatTime(v.timestampMillis)}] BP: ${v.systolicBp || '--'}/${v.diastolicBp || '--'} mmHg | HR: ${v.restingHeartRate || '--'} bpm ${v.dizzinessSeverity ? `| Dizziness: ${v.dizzinessSeverity}/10` : ''} ${v.symptoms ? `| Symptoms: "${v.symptoms}"` : ''}`).join('\n') || '  * No vitals logged recently.'}
+
 TODAY'S MORNING CHECK-IN (${todayDateStr}):
 ${todayCheckIn ? `- Goal: "${todayCheckIn.mainGoal}" | Top Priority: "${todayCheckIn.priority1}" | Energy Level: ${todayCheckIn.energy}/10 | Mood: ${todayCheckIn.mood}/10 | Logged At: ${formatTime(todayCheckIn.createdAtMillis)}` : '- Morning Check-in not yet recorded for today.'}
 
@@ -725,7 +1047,7 @@ TODAY'S EVENING REVIEW (${todayDateStr}):
 ${todayReview ? `- Rating: ${todayReview.rating}/10 | What Went Well: "${todayReview.wentWell}" | What Didn't Go Well: "${todayReview.didntGoWell}" | Learned: "${todayReview.learnedText}" | Logged At: ${formatTime(todayReview.createdAtMillis)}` : '- Evening Review not yet recorded for today.'}
 
 PENDING & IN-PROGRESS TASKS:
-${tasks.filter((t) => t.status !== 'COMPLETED').map((t) => `- [${t.priority}] "${t.title}" (${t.category}) | Status: ${t.status} | Created At: ${formatTime(t.createdAtMillis)}`).join('\n') || '- No pending tasks.'}
+${tasks.filter((t) => t.status !== 'COMPLETED').map((t) => `- [${t.priority}] "${t.title}" (${t.category}) | Status: ${t.status} ${t.safetyWarning ? `⚠️ [${t.safetyWarning}]` : ''} | Created At: ${formatTime(t.createdAtMillis)}`).join('\n') || '- No pending tasks.'}
 
 RECENTLY COMPLETED TASKS:
 ${tasks.filter((t) => t.status === 'COMPLETED').slice(0, 5).map((t) => `- "${t.title}" (${t.category}) | Completed At: ${formatTime(t.completedAtMillis)}`).join('\n') || '- No completed tasks recorded.'}
