@@ -315,34 +315,29 @@ export const App: React.FC = () => {
       });
 
       const contentType = response.headers.get('content-type');
-      if (!response.ok || !contentType || !contentType.includes('application/json')) {
-        const errorText = await response.text();
-        console.error('Non-JSON or error response from AI endpoint:', response.status, errorText);
-        throw new Error(
-          response.status === 404
-            ? 'AI server endpoint not found (/api/ai/chat).'
-            : `Server returned status ${response.status}.`
-        );
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        const botMsg: AiChatMessage = {
+          id: Date.now() + 1,
+          text: data.text || data.error || "I'm sorry, I couldn't generate a response.",
+          isUser: false,
+          timestampMillis: Date.now(),
+          actionType: data.actionType || undefined,
+          actionPayloadJson: data.actionPayloadJson || undefined,
+        };
+        PAIOSStorage.addAiMessage(botMsg);
+        reloadState();
+        return;
       }
 
-      const data = await response.json();
-
-      const botMsg: AiChatMessage = {
-        id: Date.now() + 1,
-        text: data.text || "I'm sorry, I couldn't generate a response.",
-        isUser: false,
-        timestampMillis: Date.now(),
-        actionType: data.actionType || undefined,
-        actionPayloadJson: data.actionPayloadJson || undefined,
-      };
-
-      PAIOSStorage.addAiMessage(botMsg);
-      reloadState();
-    } catch (err) {
-      console.error(err);
+      const errorText = await response.text();
+      console.error('Non-JSON response from AI endpoint:', response.status, errorText);
+      throw new Error(`Server returned status ${response.status}: ${errorText.slice(0, 100)}`);
+    } catch (err: any) {
+      console.error('AI Chat Error:', err);
       const errorMsg: AiChatMessage = {
         id: Date.now() + 1,
-        text: 'Error connecting to PAIOS AI server. Please verify your network or Gemini settings.',
+        text: err?.message || 'Error connecting to PAIOS AI server. Please verify your network or Gemini settings.',
         isUser: false,
         timestampMillis: Date.now(),
       };

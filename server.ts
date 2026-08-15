@@ -150,16 +150,14 @@ async function startServer() {
         },
       });
 
-      let selectedModel = 'gemini-2.5-flash';
+      let selectedModel = 'gemini-3.7-flash';
       if (modelName && typeof modelName === 'string') {
         if (modelName.includes('pro')) {
-          selectedModel = 'gemini-2.5-pro';
-        } else if (modelName.includes('2.5-flash')) {
-          selectedModel = 'gemini-2.5-flash';
-        } else if (modelName.includes('1.5-flash')) {
-          selectedModel = 'gemini-1.5-flash';
+          selectedModel = 'gemini-3.1-pro-preview';
+        } else if (modelName.includes('3.7') || modelName.includes('flash')) {
+          selectedModel = 'gemini-3.7-flash';
         } else {
-          selectedModel = 'gemini-2.5-flash';
+          selectedModel = 'gemini-3.7-flash';
         }
       }
 
@@ -192,10 +190,10 @@ ${userContext || 'No context available.'}
         });
         fullText = response.text || '';
       } catch (firstErr: any) {
-        console.warn(`Primary Gemini model (${selectedModel}) call failed, retrying with gemini-2.5-flash:`, firstErr?.message);
+        console.warn(`Primary Gemini model (${selectedModel}) call failed, retrying with gemini-3.7-flash:`, firstErr?.message);
         try {
           const fallbackResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.7-flash',
             contents: userText,
             config: {
               systemInstruction,
