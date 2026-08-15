@@ -25,10 +25,12 @@ interface TodayScreenProps {
   todayTasks: Task[];
   timelineEntries: TimelineEntry[];
   userName: string;
-  onStartActivity: (name: string, category: string) => void;
-  onPauseActivity: (id: number) => void;
-  onResumeActivity: (id: number) => void;
-  onFinishActivity: (id: number) => void;
+  onStartActivity: (name: string, category: string, note?: string) => void;
+  onStartTaskTimer?: (task: Task) => void;
+  onPauseActivity: (id?: number) => void;
+  onResumeActivity: (id?: number) => void;
+  onFinishActivity: (id?: number) => void;
+  onOpenFinishModal?: () => void;
   onToggleTaskStatus: (taskId: number) => void;
   onOpenStartActivity: () => void;
   onOpenQuickCapture: () => void;
@@ -44,9 +46,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   timelineEntries,
   userName,
   onStartActivity,
+  onStartTaskTimer,
   onPauseActivity,
   onResumeActivity,
   onFinishActivity,
+  onOpenFinishModal,
   onToggleTaskStatus,
   onOpenStartActivity,
   onOpenQuickCapture,
@@ -62,14 +66,15 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     if (activeActivity) {
       const updateSeconds = () => {
         const now = Date.now();
+        const pausedSecs = activeActivity.accumulatedPausedDurationSeconds || 0;
         if (activeActivity.isRunning && !activeActivity.isPaused) {
-          const grossSecs = Math.floor((now - activeActivity.startTimeMillis) / 1000);
-          const netSecs = Math.max(0, grossSecs - activeActivity.accumulatedPausedDurationSeconds);
+          const grossSecs = Math.max(0, Math.floor((now - activeActivity.startTimeMillis) / 1000));
+          const netSecs = Math.max(0, grossSecs - pausedSecs);
           setLiveSeconds(netSecs);
         } else if (activeActivity.isPaused) {
           const pauseStart = activeActivity.pauseStartTimeMillis || now;
-          const grossSecs = Math.floor((pauseStart - activeActivity.startTimeMillis) / 1000);
-          const netSecs = Math.max(0, grossSecs - activeActivity.accumulatedPausedDurationSeconds);
+          const grossSecs = Math.max(0, Math.floor((pauseStart - activeActivity.startTimeMillis) / 1000));
+          const netSecs = Math.max(0, grossSecs - pausedSecs);
           setLiveSeconds(netSecs);
         }
       };
@@ -91,6 +96,22 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     }
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const handleFinishClick = () => {
+    if (onOpenFinishModal) {
+      onOpenFinishModal();
+    } else if (activeActivity) {
+      onFinishActivity(activeActivity.id);
+    }
+  };
+
+  const handleStartTask = (task: Task) => {
+    if (onStartTaskTimer) {
+      onStartTaskTimer(task);
+    } else {
+      onStartActivity(task.title, task.category, task.description || undefined);
+    }
   };
 
   return (
@@ -157,7 +178,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
               )}
 
               <button
-                onClick={() => onFinishActivity(activeActivity.id)}
+                onClick={handleFinishClick}
                 className="py-2.5 px-5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-rose-600/20"
               >
                 <Square className="w-4 h-4 fill-current" />
@@ -294,47 +315,79 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           </div>
         ) : (
           <div className="space-y-2.5">
-            {priorities.map((task) => (
-              <div
-                key={task.id}
-                className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-colors flex items-center justify-between gap-3 group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <button
-                    onClick={() => onToggleTaskStatus(task.id)}
-                    className="text-slate-500 hover:text-emerald-400 transition-colors"
-                  >
-                    {task.status === 'COMPLETED' ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 fill-emerald-950" />
-                    ) : (
-                      <Circle className="w-5 h-5" />
-                    )}
-                  </button>
-
-                  <div className="min-w-0">
-                    <p
-                      className={`text-xs font-medium text-white truncate ${
-                        task.status === 'COMPLETED' ? 'line-through text-slate-500' : ''
-                      }`}
+            {priorities.map((task) => {
+              const isTaskActive = activeActivity && activeActivity.activityName.toLowerCase().includes(task.title.toLowerCase());
+              return (
+                <div
+                  key={task.id}
+                  className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 group ${
+                    isTaskActive
+                      ? 'bg-indigo-950/40 border-indigo-500/50 shadow-md shadow-indigo-950/50'
+                      : 'bg-slate-950 border border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      onClick={() => onToggleTaskStatus(task.id)}
+                      className="text-slate-500 hover:text-emerald-400 transition-colors"
+                      title={task.status === 'COMPLETED' ? 'Mark Incomplete' : 'Mark Complete'}
                     >
-                      {task.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] font-mono text-indigo-400 bg-indigo-950 px-1.5 py-0.2 rounded">
-                        {task.category}
-                      </span>
-                      {task.description && (
-                        <span className="text-[10px] text-slate-400 truncate max-w-[200px]">{task.description}</span>
+                      {task.status === 'COMPLETED' ? (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400 fill-emerald-950" />
+                      ) : (
+                        <Circle className="w-5 h-5" />
                       )}
+                    </button>
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p
+                          className={`text-xs font-medium text-white truncate ${
+                            task.status === 'COMPLETED' ? 'line-through text-slate-500' : ''
+                          }`}
+                        >
+                          {task.title}
+                        </p>
+                        {isTaskActive && (
+                          <span className="flex items-center gap-1 text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 px-1.5 py-0.2 rounded animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            Tracking Now
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] font-mono text-indigo-400 bg-indigo-950 px-1.5 py-0.2 rounded">
+                          {task.category}
+                        </span>
+                        {task.description && (
+                          <span className="text-[10px] text-slate-400 truncate max-w-[200px]">{task.description}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 bg-amber-950/60 border border-amber-800/40 px-2 py-0.5 rounded">
-                  High Priority
-                </span>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {task.status !== 'COMPLETED' && (
+                      <button
+                        onClick={() => handleStartTask(task)}
+                        className={`p-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                          isTaskActive
+                            ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
+                            : 'bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white'
+                        }`}
+                        title="Start timer for this task"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span className="hidden sm:inline text-[11px] font-medium">Track</span>
+                      </button>
+                    )}
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 bg-amber-950/60 border border-amber-800/40 px-2 py-0.5 rounded">
+                      High Priority
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -365,9 +418,9 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                       <h4 className="text-xs font-semibold text-white mt-0.5">{entry.title}</h4>
                       {entry.note && <p className="text-[11px] text-slate-400 mt-0.5">{entry.note}</p>}
                     </div>
-                    {entry.durationMinutes && (
+                    {entry.durationMinutes !== undefined && entry.durationMinutes !== null && (
                       <span className="text-[10px] font-mono font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded">
-                        {entry.durationMinutes}m
+                        {entry.durationMinutes > 0 ? `${entry.durationMinutes}m` : '< 1m'}
                       </span>
                     )}
                   </div>
@@ -399,25 +452,41 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
               todayTasks
                 .filter((t) => t.status !== 'COMPLETED')
                 .slice(0, 5)
-                .map((task) => (
-                  <div
-                    key={task.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <button
-                        onClick={() => onToggleTaskStatus(task.id)}
-                        className="text-slate-500 hover:text-emerald-400 transition-colors"
-                      >
-                        <Circle className="w-4 h-4" />
-                      </button>
-                      <span className="text-xs font-medium text-white truncate">{task.title}</span>
+                .map((task) => {
+                  const isTaskActive = activeActivity && activeActivity.activityName.toLowerCase().includes(task.title.toLowerCase());
+                  return (
+                    <div
+                      key={task.id}
+                      className={`p-3 rounded-xl border flex items-center justify-between gap-2 transition-all ${
+                        isTaskActive
+                          ? 'bg-indigo-950/40 border-indigo-500/50'
+                          : 'bg-slate-950 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <button
+                          onClick={() => onToggleTaskStatus(task.id)}
+                          className="text-slate-500 hover:text-emerald-400 transition-colors"
+                        >
+                          <Circle className="w-4 h-4" />
+                        </button>
+                        <span className="text-xs font-medium text-white truncate">{task.title}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleStartTask(task)}
+                          className="p-1 rounded-md text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-colors"
+                          title="Start timer for this task"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                        </button>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                          {task.category}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
-                      {task.category}
-                    </span>
-                  </div>
-                ))
+                  );
+                })
             )}
           </div>
         </section>

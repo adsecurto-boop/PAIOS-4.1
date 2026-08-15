@@ -17,6 +17,7 @@ import { PAIOSStorage } from './storage';
 import { TopHeaderBar } from './components/TopHeaderBar';
 import { MiniTimerPlayer } from './components/MiniTimerPlayer';
 import { StartActivityModal } from './components/StartActivityModal';
+import { FinishActivityModal } from './components/FinishActivityModal';
 import { QuickCaptureModal } from './components/QuickCaptureModal';
 import { CheckInModal } from './components/CheckInModal';
 import { ReviewModal } from './components/ReviewModal';
@@ -67,6 +68,7 @@ export const App: React.FC = () => {
 
   // Modals
   const [showStartActivityModal, setShowStartActivityModal] = useState(false);
+  const [showFinishActivityModal, setShowFinishActivityModal] = useState(false);
   const [showQuickCaptureModal, setShowQuickCaptureModal] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -124,14 +126,15 @@ export const App: React.FC = () => {
     if (activeActivity) {
       const updateSeconds = () => {
         const now = Date.now();
+        const pausedSecs = activeActivity.accumulatedPausedDurationSeconds || 0;
         if (activeActivity.isRunning && !activeActivity.isPaused) {
-          const grossSecs = Math.floor((now - activeActivity.startTimeMillis) / 1000);
-          const netSecs = Math.max(0, grossSecs - activeActivity.accumulatedPausedDurationSeconds);
+          const grossSecs = Math.max(0, Math.floor((now - activeActivity.startTimeMillis) / 1000));
+          const netSecs = Math.max(0, grossSecs - pausedSecs);
           setElapsedTimerSeconds(netSecs);
         } else if (activeActivity.isPaused) {
           const pauseStart = activeActivity.pauseStartTimeMillis || now;
-          const grossSecs = Math.floor((pauseStart - activeActivity.startTimeMillis) / 1000);
-          const netSecs = Math.max(0, grossSecs - activeActivity.accumulatedPausedDurationSeconds);
+          const grossSecs = Math.max(0, Math.floor((pauseStart - activeActivity.startTimeMillis) / 1000));
+          const netSecs = Math.max(0, grossSecs - pausedSecs);
           setElapsedTimerSeconds(netSecs);
         }
       };
@@ -151,18 +154,33 @@ export const App: React.FC = () => {
     reloadState();
   };
 
-  const handlePauseActivity = (id: number) => {
+  const handleStartTaskTimer = (task: Task) => {
+    PAIOSStorage.startActivity(task.title, task.category, task.description || undefined);
+    reloadState();
+  };
+
+  const handlePauseActivity = (id?: number) => {
     PAIOSStorage.pauseActivity(id);
     reloadState();
   };
 
-  const handleResumeActivity = (id: number) => {
+  const handleResumeActivity = (id?: number) => {
     PAIOSStorage.resumeActivity(id);
     reloadState();
   };
 
-  const handleFinishActivity = (id: number) => {
+  const handleFinishActivity = (id?: number) => {
     PAIOSStorage.finishActivity(id);
+    reloadState();
+  };
+
+  const handleFinishActivityWithDetails = (id: number, finalNote: string, completedTaskId?: number | null) => {
+    PAIOSStorage.finishActivity(id, finalNote, completedTaskId);
+    reloadState();
+  };
+
+  const handleDiscardActivity = (id: number) => {
+    PAIOSStorage.discardActivity(id);
     reloadState();
   };
 

@@ -19,6 +19,7 @@ import {
   setDoc,
   getDoc,
   onSnapshot,
+  disableNetwork,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -172,6 +173,33 @@ export function getLocalSnapshot(): Record<string, any> {
 
 // Flag to prevent recursive loop during Firestore -> Local updates
 let isApplyingRemoteUpdate = false;
+let quotaExceeded = typeof window !== 'undefined' && sessionStorage.getItem('paios_quota_exceeded') === 'true';
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+if (quotaExceeded) {
+  try {
+    disableNetwork(db).catch(() => {});
+  } catch (e) {}
+}
+
+function markQuotaExceeded() {
+  if (!quotaExceeded) {
+    quotaExceeded = true;
+    try {
+      disableNetwork(db).catch(() => {});
+    } catch (e) {}
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('paios_quota_exceeded', 'true');
+        window.dispatchEvent(new Event('paios_quota_exceeded'));
+      }
+    } catch (e) {}
+  }
+}
+
+export function isQuotaExceeded(): boolean {
+  return quotaExceeded;
+}
 
 // Helper to get and set active vault code
 export function getSavedVaultCode(): string | null {
@@ -194,22 +222,25 @@ export function setSavedVaultCode(code: string | null): void {
   }
 }
 
-// Auto-sync listener for local storage changes
+// Auto-sync listener for local storage changes with DEBOUNCE and QUOTA GUARD
 if (typeof window !== 'undefined') {
   window.addEventListener('paios_storage_change', () => {
-    if (isApplyingRemoteUpdate) return;
-    const vaultCode = getSavedVaultCode();
-    if (vaultCode) {
-      syncLocalToVault(vaultCode);
-    } else if (auth.currentUser) {
-      syncLocalToCloud(auth.currentUser.uid);
-    }
+    if (isApplyingRemoteUpdate || quotaExceeded) return;
+    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(() => {
+      const vaultCode = getSavedVaultCode();
+      if (vaultCode) {
+        syncLocalToVault(vaultCode);
+      } else if (auth.currentUser) {
+        syncLocalToCloud(auth.currentUser.uid);
+      }
+    }, 1500);
   });
 }
 
 // Save current local snapshot to Firestore (User or Vault)
 export async function syncLocalToCloud(userId: string): Promise<void> {
-  if (isApplyingRemoteUpdate) return;
+  if (isApplyingRemoteUpdate || quotaExceeded || !userId) return;
   try {
     const localData = getLocalSnapshot();
     const userDocRef = doc(db, 'users', userId);
@@ -225,14 +256,23 @@ export async function syncLocalToCloud(userId: string): Promise<void> {
       },
       { merge: true }
     );
-  } catch (err) {
-    console.error('Failed to sync local data to Firestore:', err);
+  } catch (err: any) {
+    if (
+      err?.code === 'resource-exhausted' ||
+      err?.message?.includes('Quota limit exceeded') ||
+      err?.message?.includes('resource-exhausted')
+    ) {
+      markQuotaExceeded();
+      console.warn('Firestore write quota limit exceeded. Switching to local-only storage until quota resets.');
+    } else {
+      console.error('Failed to sync local data to Firestore:', err);
+    }
   }
 }
 
 // Sync local data to a Shared Vault Code (e.g. SYNC-1234)
 export async function syncLocalToVault(vaultCode: string): Promise<void> {
-  if (isApplyingRemoteUpdate || !vaultCode) return;
+  if (isApplyingRemoteUpdate || quotaExceeded || !vaultCode) return;
   try {
     const localData = getLocalSnapshot();
     const vaultRef = doc(db, 'sync_vaults', vaultCode.trim().toUpperCase());
@@ -246,8 +286,17 @@ export async function syncLocalToVault(vaultCode: string): Promise<void> {
       },
       { merge: true }
     );
-  } catch (err) {
-    console.error('Failed to sync local data to Vault:', err);
+  } catch (err: any) {
+    if (
+      err?.code === 'resource-exhausted' ||
+      err?.message?.includes('Quota limit exceeded') ||
+      err?.message?.includes('resource-exhausted')
+    ) {
+      markQuotaExceeded();
+      console.warn('Firestore write quota limit exceeded. Switching to local-only storage until quota resets.');
+    } else {
+      console.error('Failed to sync local data to Vault:', err);
+    }
   }
 }
 
@@ -256,7 +305,7 @@ export function listenToVaultData(
   vaultCode: string,
   onSyncComplete?: () => void
 ): () => void {
-  if (!vaultCode) return () => {};
+  if (!vaultCode || quotaExceeded) return () => {};
   const vaultRef = doc(db, 'sync_vaults', vaultCode.trim().toUpperCase());
 
   const unsubscribe = onSnapshot(
@@ -267,25 +316,41 @@ export function listenToVaultData(
         isApplyingRemoteUpdate = true;
 
         Object.entries(STORAGE_KEYS).forEach(([key, storageKey]) => {
-          if (cloudData[key] !== undefined && cloudData[key] !== null) {
+          if (cloudData[key] !== undefined) {
             try {
-              localStorage.setItem(storageKey, JSON.stringify(cloudData[key]));
+              if (cloudData[key] === null) {
+                localStorage.removeItem(storageKey);
+              } else {
+                localStorage.setItem(storageKey, JSON.stringify(cloudData[key]));
+              }
             } catch (e) {
               console.error(`Error applying vault update for ${storageKey}:`, e);
             }
           }
         });
 
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('paios_storage_change'));
+        }
         isApplyingRemoteUpdate = false;
-        window.dispatchEvent(new Event('paios_storage_change'));
         if (onSyncComplete) onSyncComplete();
       } else {
-        // Seed new vault with current local snapshot
-        syncLocalToVault(vaultCode);
+        // Seed new vault with current local snapshot if within quota
+        if (!quotaExceeded) {
+          syncLocalToVault(vaultCode);
+        }
       }
     },
     (error) => {
-      console.error('Vault listener error:', error);
+      if (
+        error?.code === 'resource-exhausted' ||
+        error?.message?.includes('Quota limit exceeded') ||
+        error?.message?.includes('resource-exhausted')
+      ) {
+        markQuotaExceeded();
+      } else {
+        console.error('Vault listener error:', error);
+      }
       isApplyingRemoteUpdate = false;
     }
   );
@@ -298,7 +363,7 @@ export function listenToCloudData(
   userId: string,
   onSyncComplete?: () => void
 ): () => void {
-  if (!userId) return () => {};
+  if (!userId || quotaExceeded) return () => {};
   const userDocRef = doc(db, 'users', userId);
 
   const unsubscribe = onSnapshot(
@@ -309,26 +374,39 @@ export function listenToCloudData(
         isApplyingRemoteUpdate = true;
 
         Object.entries(STORAGE_KEYS).forEach(([key, storageKey]) => {
-          if (cloudData[key] !== undefined && cloudData[key] !== null) {
+          if (cloudData[key] !== undefined) {
             try {
-              localStorage.setItem(storageKey, JSON.stringify(cloudData[key]));
+              if (cloudData[key] === null) {
+                localStorage.removeItem(storageKey);
+              } else {
+                localStorage.setItem(storageKey, JSON.stringify(cloudData[key]));
+              }
             } catch (e) {
               console.error(`Error applying cloud update for ${storageKey}:`, e);
             }
           }
         });
 
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('paios_storage_change'));
+        }
         isApplyingRemoteUpdate = false;
-        // Notify components of storage change
-        window.dispatchEvent(new Event('paios_storage_change'));
         if (onSyncComplete) onSyncComplete();
       } else {
-        // First time user document: seed cloud with current local snapshot
-        syncLocalToCloud(userId);
+        // First time user document: seed cloud with current local snapshot if within quota
+        if (!quotaExceeded) {
+          syncLocalToCloud(userId);
+        }
       }
     },
     (error) => {
-      if (error?.code === 'permission-denied') {
+      if (
+        error?.code === 'resource-exhausted' ||
+        error?.message?.includes('Quota limit exceeded') ||
+        error?.message?.includes('resource-exhausted')
+      ) {
+        markQuotaExceeded();
+      } else if (error?.code === 'permission-denied') {
         console.warn('Firestore listener permission notice:', error.message);
       } else {
         console.error('Firestore listener error:', error);

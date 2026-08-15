@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { Cloud, LogOut, RefreshCw, Sparkles, ShieldCheck, Mail, Key, UserCheck, ArrowRight, Lock, CheckCircle2 } from 'lucide-react';
+import { Cloud, LogOut, RefreshCw, Sparkles, ShieldCheck, Mail, Key, UserCheck, ArrowRight, Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
   auth,
   signInWithGoogle,
@@ -16,6 +16,7 @@ import {
   syncLocalToVault,
   getSavedVaultCode,
   setSavedVaultCode,
+  isQuotaExceeded,
 } from '../firebase';
 
 interface CloudSyncBannerProps {
@@ -29,6 +30,13 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
   const [isSyncing, setIsSyncing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [quotaExceeded, setQuotaExceeded] = useState(isQuotaExceeded());
+
+  useEffect(() => {
+    const handleQuota = () => setQuotaExceeded(true);
+    window.addEventListener('paios_quota_exceeded', handleQuota);
+    return () => window.removeEventListener('paios_quota_exceeded', handleQuota);
+  }, []);
 
   // Sync Method State
   const [authMethod, setAuthMethod] = useState<'vault' | 'email' | 'google'>('vault');
@@ -285,6 +293,18 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
           </div>
         </div>
       </div>
+
+      {quotaExceeded && (
+        <div className="p-3.5 bg-amber-950/70 border border-amber-700/80 rounded-xl text-amber-200 text-xs flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+          <div className="space-y-0.5">
+            <span className="font-bold text-amber-300 block">Firestore Free Daily Quota Limit Reached</span>
+            <p className="text-[11px] text-slate-300">
+              Your app has automatically switched to offline local-storage mode. All data is saved safely on your device, and cloud sync will resume when the quota resets tomorrow.
+            </p>
+          </div>
+        </div>
+      )}
 
       {successMsg && (
         <div className="p-3 bg-emerald-950/80 border border-emerald-700/80 rounded-xl text-emerald-300 text-xs flex items-center gap-2">

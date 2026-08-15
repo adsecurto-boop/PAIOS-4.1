@@ -48,7 +48,18 @@ async function startServer() {
         },
       });
 
-      const selectedModel = modelName || 'gemini-3.6-flash';
+      let selectedModel = 'gemini-2.5-flash';
+      if (modelName && typeof modelName === 'string') {
+        if (modelName.includes('pro')) {
+          selectedModel = 'gemini-2.5-pro';
+        } else if (modelName.includes('2.5-flash')) {
+          selectedModel = 'gemini-2.5-flash';
+        } else if (modelName.includes('1.5-flash')) {
+          selectedModel = 'gemini-1.5-flash';
+        } else {
+          selectedModel = 'gemini-2.5-flash';
+        }
+      }
 
       const systemInstruction = `
 You are PAIOS (Personal AI Operating System), a calm, highly intelligent personal productivity and life assistant.
@@ -67,16 +78,43 @@ Current PAIOS User Context:
 ${userContext || 'No context available.'}
 `.trim();
 
-      const response = await ai.models.generateContent({
-        model: selectedModel,
-        contents: userText,
-        config: {
-          systemInstruction,
-          temperature: 0.7,
-        },
-      });
+      let fullText = '';
+      try {
+        const response = await ai.models.generateContent({
+          model: selectedModel,
+          contents: userText,
+          config: {
+            systemInstruction,
+            temperature: 0.7,
+          },
+        });
+        fullText = response.text || '';
+      } catch (firstErr: any) {
+        console.warn(`Primary Gemini model (${selectedModel}) call failed, retrying with gemini-2.5-flash:`, firstErr?.message);
+        try {
+          const fallbackResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: userText,
+            config: {
+              systemInstruction,
+              temperature: 0.7,
+            },
+          });
+          fullText = fallbackResponse.text || '';
+        } catch (retryErr: any) {
+          console.error('Gemini API Fallback Retry Error:', retryErr);
+          res.json({
+            text: `Unable to process request with Gemini API: ${retryErr.message || 'API request failed'}. Please check your API key in Settings.`,
+            actionType: null,
+            actionPayloadJson: null,
+          });
+          return;
+        }
+      }
 
-      const fullText = response.text || 'I could not generate a response. Please check your network or API key.';
+      if (!fullText) {
+        fullText = 'I could not generate a response. Please check your network or API key settings.';
+      }
 
       // Parse action block
       let actionType: string | null = null;

@@ -217,9 +217,6 @@ function save<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     window.dispatchEvent(new Event('paios_storage_change'));
-    if (auth.currentUser) {
-      syncLocalToCloud(auth.currentUser.uid);
-    }
   } catch (e) {
     console.error(`Error saving key ${key}:`, e);
   }
@@ -312,15 +309,15 @@ export const storage = {
       isRunning: true,
       isPaused: false,
       accumulatedPausedDurationSeconds: 0,
-      note,
+      note: note || null,
     };
 
     save(STORAGE_KEYS.ACTIVE_ACTIVITY, newActivity);
     return newActivity;
   },
-  pauseActivity(activityId: number): void {
+  pauseActivity(activityId?: number): void {
     const active = this.getActiveActivity();
-    if (active && active.id === activityId && active.isRunning && !active.isPaused) {
+    if (active && (!activityId || String(active.id) === String(activityId)) && active.isRunning && !active.isPaused) {
       const updated: ActivityLog = {
         ...active,
         isPaused: true,
@@ -329,33 +326,41 @@ export const storage = {
       save(STORAGE_KEYS.ACTIVE_ACTIVITY, updated);
     }
   },
-  resumeActivity(activityId: number): void {
+  resumeActivity(activityId?: number): void {
     const active = this.getActiveActivity();
-    if (active && active.id === activityId && active.isPaused) {
+    if (active && (!activityId || String(active.id) === String(activityId)) && active.isPaused) {
       const now = Date.now();
       const pauseStart = active.pauseStartTimeMillis || now;
-      const extraPausedSecs = Math.floor((now - pauseStart) / 1000);
+      const extraPausedSecs = Math.max(0, Math.floor((now - pauseStart) / 1000));
       const updated: ActivityLog = {
         ...active,
         isPaused: false,
         pauseStartTimeMillis: null,
-        accumulatedPausedDurationSeconds: active.accumulatedPausedDurationSeconds + extraPausedSecs,
+        accumulatedPausedDurationSeconds: (active.accumulatedPausedDurationSeconds || 0) + extraPausedSecs,
       };
       save(STORAGE_KEYS.ACTIVE_ACTIVITY, updated);
     }
   },
-  finishActivity(activityId: number, finalNote?: string | null): void {
+  discardActivity(activityId?: number): void {
     const active = this.getActiveActivity();
-    if (active && active.id === activityId) {
+    if (active && (!activityId || String(active.id) === String(activityId))) {
+      save(STORAGE_KEYS.ACTIVE_ACTIVITY, null);
+    }
+  },
+  finishActivity(activityId?: number, finalNote?: string | null, completedTaskId?: number | null): void {
+    const active = this.getActiveActivity();
+    if (active && (!activityId || String(active.id) === String(activityId))) {
       const now = Date.now();
       let extraPausedSecs = 0;
       if (active.isPaused && active.pauseStartTimeMillis) {
-        extraPausedSecs = Math.floor((now - active.pauseStartTimeMillis) / 1000);
+        extraPausedSecs = Math.max(0, Math.floor((now - active.pauseStartTimeMillis) / 1000));
       }
-      const totalPausedSecs = active.accumulatedPausedDurationSeconds + extraPausedSecs;
-      const grossDurationSecs = Math.floor((now - active.startTimeMillis) / 1000);
+      const totalPausedSecs = (active.accumulatedPausedDurationSeconds || 0) + extraPausedSecs;
+      const grossDurationSecs = Math.max(0, Math.floor((now - active.startTimeMillis) / 1000));
       const netDurationSecs = Math.max(0, grossDurationSecs - totalPausedSecs);
-      const durationMins = Math.floor(netDurationSecs / 60);
+      const durationMins = netDurationSecs >= 60 ? Math.round(netDurationSecs / 60) : (netDurationSecs >= 10 ? 1 : 0);
+
+      const noteToSave = finalNote !== undefined ? finalNote : (active.note || null);
 
       const finishedActivity: ActivityLog = {
         ...active,
@@ -364,24 +369,29 @@ export const storage = {
         isRunning: false,
         isPaused: false,
         accumulatedPausedDurationSeconds: totalPausedSecs,
-        note: finalNote !== undefined ? finalNote : active.note,
+        note: noteToSave,
       };
 
-      // Save to history list
+      // 1. Save to history list
       const activities = load<ActivityLog[]>(STORAGE_KEYS.ACTIVITIES, []);
       activities.unshift(finishedActivity);
       save(STORAGE_KEYS.ACTIVITIES, activities);
 
-      // Clear active
+      // 2. Mark linked task as completed if requested
+      if (completedTaskId) {
+        this.toggleTaskStatus(completedTaskId);
+      }
+
+      // 3. Clear active timer
       save(STORAGE_KEYS.ACTIVE_ACTIVITY, null);
 
-      // Add to Timeline
+      // 4. Add to Timeline
       this.addTimelineEntry({
         title: finishedActivity.activityName,
         category: finishedActivity.category,
         timestampMillis: finishedActivity.startTimeMillis,
         durationMinutes: durationMins,
-        note: finishedActivity.note,
+        note: finishedActivity.note || undefined,
         type: 'ACTIVITY',
       });
     }
