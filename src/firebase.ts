@@ -60,18 +60,15 @@ export async function signInWithGoogle(): Promise<User> {
   }
 }
 
-// Anonymous / Instant Guest Cloud Sync Sign In (Works when Anonymous Auth is enabled)
-export async function signInWithGuestSync(): Promise<User> {
+// Anonymous / Instant Guest Cloud Sync Sign In (Optional fallback when enabled)
+export async function signInWithGuestSync(): Promise<User | null> {
   try {
     const result = await signInAnonymously(auth);
     return result.user;
   } catch (err: any) {
-    if (err?.code === 'auth/admin-restricted-operation' || err?.message?.includes('admin-restricted-operation')) {
-      console.warn('Firebase Anonymous auth is currently disabled in Firebase Console.');
-      throw new Error('ANONYMOUS_DISABLED');
-    }
-    console.warn('Guest Sync Sign In warning:', err);
-    throw err;
+    // If anonymous auth is not enabled in Firebase console, gracefully return null
+    // (Vault sync works independently without requiring an auth session)
+    return null;
   }
 }
 

@@ -63,9 +63,6 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
     let unsubVault: (() => void) | null = null;
     if (activeVaultCode) {
       setIsSyncing(true);
-      if (!auth.currentUser) {
-        signInWithGuestSync().catch(console.error);
-      }
       unsubVault = listenToVaultData(activeVaultCode, () => {
         setIsSyncing(false);
         if (onSyncComplete) onSyncComplete();
@@ -86,13 +83,6 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      if (!auth.currentUser) {
-        try {
-          await signInWithGuestSync();
-        } catch (authErr) {
-          console.warn('Guest sign-in notice (proceeding with public vault sync):', authErr);
-        }
-      }
       await syncLocalToVault(targetCode);
       setSavedVaultCode(targetCode);
       setActiveVaultCode(targetCode);
