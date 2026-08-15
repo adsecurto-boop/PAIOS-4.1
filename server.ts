@@ -148,12 +148,14 @@ app.post('/api/ai/chat', async (req, res) => {
       },
     });
 
-    let selectedModel = 'gemini-2.5-flash';
+    let selectedModel = 'gemini-flash-latest';
     if (modelName && typeof modelName === 'string') {
       if (modelName.includes('pro')) {
-        selectedModel = 'gemini-2.5-pro';
+        selectedModel = 'gemini-3.1-pro-preview';
+      } else if (modelName.includes('3.7')) {
+        selectedModel = 'gemini-3.7-flash';
       } else {
-        selectedModel = 'gemini-2.5-flash';
+        selectedModel = 'gemini-flash-latest';
       }
     }
 
@@ -186,10 +188,10 @@ ${userContext || 'No context available.'}
       });
       fullText = response.text || '';
     } catch (firstErr: any) {
-      console.warn(`Primary Gemini model (${selectedModel}) call failed, retrying with gemini-2.5-flash:`, firstErr?.message);
+      console.warn(`Primary Gemini model (${selectedModel}) call failed, retrying with gemini-flash-latest:`, firstErr?.message);
       try {
         const fallbackResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-flash-latest',
           contents: userText,
           config: {
             systemInstruction,
