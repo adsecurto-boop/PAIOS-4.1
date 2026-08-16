@@ -19,6 +19,17 @@ import {
   TrendingUp,
   Stethoscope,
   Flame,
+  UserCheck,
+  Edit2,
+  Trash2,
+  Phone,
+  Building2,
+  Mail,
+  MapPin,
+  CalendarCheck,
+  PlusCircle,
+  Minus,
+  Edit3,
 } from 'lucide-react';
 import {
   Medication,
@@ -26,6 +37,8 @@ import {
   DoseStatus,
   RefillInventory,
   VitalSign,
+  DoctorContact,
+  Appointment,
 } from '../types';
 import { PAIOSStorage, getTodayDateString } from '../storage';
 
@@ -34,10 +47,20 @@ interface HealthScreenProps {
   doseEvents: DoseEvent[];
   refillInventories: RefillInventory[];
   vitalSigns: VitalSign[];
+  doctors: DoctorContact[];
+  appointments: Appointment[];
   onLogDose: (doseId: string, status: DoseStatus, note?: string) => void;
   onUpdateRefill: (id: string, newQty: number) => void;
+  onSaveRefill: (refill: RefillInventory) => void;
+  onDeleteRefill: (id: string) => void;
   onLogVital: (vital: Omit<VitalSign, 'id' | 'timestampMillis'>) => void;
   onAddMedication: (med: Medication) => void;
+  onDeleteMedication: (id: string) => void;
+  onSaveDoctor: (doc: DoctorContact) => void;
+  onDeleteDoctor: (id: string) => void;
+  onBookAppointment: (apt: Omit<Appointment, 'id' | 'createdAtMillis'>) => void;
+  onUpdateAppointmentStatus: (id: string, status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED') => void;
+  onDeleteAppointment: (id: string) => void;
 }
 
 export const HealthScreen: React.FC<HealthScreenProps> = ({
@@ -45,14 +68,40 @@ export const HealthScreen: React.FC<HealthScreenProps> = ({
   doseEvents,
   refillInventories,
   vitalSigns,
+  doctors,
+  appointments,
   onLogDose,
   onUpdateRefill,
+  onSaveRefill,
+  onDeleteRefill,
   onLogVital,
   onAddMedication,
+  onDeleteMedication,
+  onSaveDoctor,
+  onDeleteDoctor,
+  onBookAppointment,
+  onUpdateAppointmentStatus,
+  onDeleteAppointment,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'schedule' | 'regimen' | 'vitals' | 'briefing' | 'safety'>('schedule');
+  const [activeSubTab, setActiveSubTab] = useState<'schedule' | 'regimen' | 'doctors' | 'vitals' | 'briefing' | 'safety'>('schedule');
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [showAddMedModal, setShowAddMedModal] = useState(false);
+
+  // Refill Inventory Modals
+  const [editingRefill, setEditingRefill] = useState<RefillInventory | null>(null);
+  const [showAddRefillModal, setShowAddRefillModal] = useState(false);
+
+  // Doctors Modals
+  const [editingDoctor, setEditingDoctor] = useState<DoctorContact | null>(null);
+  const [showAddDoctorModal, setShowAddDoctorModal] = useState(false);
+
+  // Appointment Booking Modal
+  const [showBookAppointmentModal, setShowBookAppointmentModal] = useState(false);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
+  const [aptDate, setAptDate] = useState<string>(getTodayDateString());
+  const [aptTime, setAptTime] = useState<string>('10:30');
+  const [aptReason, setAptReason] = useState<string>('Medication Review & Follow-up');
+  const [aptNotes, setAptNotes] = useState<string>('');
 
   // Vitals Form State
   const [systolic, setSystolic] = useState<string>('120');
@@ -72,9 +121,37 @@ export const HealthScreen: React.FC<HealthScreenProps> = ({
   const [newForm, setNewForm] = useState('tablet');
   const [newInstructions, setNewInstructions] = useState('');
   const [newTime, setNewTime] = useState('08:00');
-  const [newDoctor, setNewDoctor] = useState('');
+  const [newDoctor, setNewDoctor] = useState('Dr Devendra Ratnani');
+
+  // New Refill Form State
+  const [newRefillMedName, setNewRefillMedName] = useState('');
+  const [newRefillQty, setNewRefillQty] = useState('30');
+  const [newRefillUnit, setNewRefillUnit] = useState('tablets');
+  const [newRefillPharmacy, setNewRefillPharmacy] = useState('CVS Pharmacy');
+  const [newRefillPhone, setNewRefillPhone] = useState('(555) 019-2831');
+
+  // New Doctor Form State
+  const [newDocName, setNewDocName] = useState('Dr Devendra Ratnani');
+  const [newDocSpecialty, setNewDocSpecialty] = useState('Neuropsychiatry & Mind Care Specialist');
+  const [newDocClinic, setNewDocClinic] = useState('Ratnani Mind & Care Clinic');
+  const [newDocPhone, setNewDocPhone] = useState('+91 98260 12345');
+  const [newDocEmergency, setNewDocEmergency] = useState('+91 98260 99999');
+  const [newDocEmail, setNewDocEmail] = useState('dr.ratnani@ratnaniclinic.org');
+  const [newDocAddress, setNewDocAddress] = useState('Suite 402, Healthcare Complex');
 
   const todayStr = getTodayDateString();
+
+  // Primary Doctor (default: Dr Devendra Ratnani)
+  const primaryDoctor = doctors.find((d) => d.name.toLowerCase().includes('ratnani')) || doctors[0] || {
+    id: 'doc_ratnani',
+    name: 'Dr Devendra Ratnani',
+    specialty: 'Neuropsychiatry & Mind Care Specialist',
+    clinicName: 'Ratnani Mind & Care Clinic',
+    phone: '+91 98260 12345',
+    emergencyPhone: '+91 98260 99999',
+    email: 'dr.ratnani@ratnaniclinic.org',
+    address: 'Suite 402, Medical Enclave',
+  };
 
   // Stats
   const takenCount = doseEvents.filter((d) => d.status === 'TAKEN' || d.status === 'TAKEN_LATE').length;
@@ -104,8 +181,9 @@ export const HealthScreen: React.FC<HealthScreenProps> = ({
   const handleCreateMedication = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGenericName.trim()) return;
+    const medId = `med_${Date.now()}`;
     const newMed: Medication = {
-      id: `med_${Date.now()}`,
+      id: medId,
       genericName: newGenericName,
       brandName: newBrandName || newGenericName,
       dosageStrength: parseFloat(newStrength) || 10,
@@ -116,21 +194,108 @@ export const HealthScreen: React.FC<HealthScreenProps> = ({
       instructions: newInstructions || `Take 1 ${newForm} daily.`,
       scheduleTimes: [newTime],
       createdAtMillis: Date.now(),
-      prescribingDoctor: newDoctor || 'Prescribing Physician',
+      prescribingDoctor: newDoctor || 'Dr Devendra Ratnani',
     };
     onAddMedication(newMed);
+
+    // Also auto-add an inventory item to Refill Vault
+    onSaveRefill({
+      id: `refill_${Date.now()}`,
+      medicationId: medId,
+      medicationName: `${newGenericName} ${newStrength} ${newUnit}`,
+      quantityRemaining: 30,
+      unit: newForm === 'capsule' ? 'capsules' : 'tablets',
+      dailyBurnRate: 1,
+      minimumThresholdDays: 7,
+      pharmacyName: 'CVS Pharmacy',
+      pharmacyPhone: '(555) 019-2831',
+      refillsRemaining: 3,
+      lastRefillDateString: todayStr,
+    });
+
     setShowAddMedModal(false);
     setNewGenericName('');
     setNewBrandName('');
+  };
+
+  const handleCreateRefillItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRefillMedName.trim()) return;
+    onSaveRefill({
+      id: `refill_${Date.now()}`,
+      medicationId: `med_custom_${Date.now()}`,
+      medicationName: newRefillMedName,
+      quantityRemaining: parseInt(newRefillQty) || 30,
+      unit: newRefillUnit || 'tablets',
+      dailyBurnRate: 1,
+      minimumThresholdDays: 7,
+      pharmacyName: newRefillPharmacy || 'Pharmacy',
+      pharmacyPhone: newRefillPhone || '(555) 000-0000',
+      refillsRemaining: 3,
+      lastRefillDateString: todayStr,
+    });
+    setShowAddRefillModal(false);
+    setNewRefillMedName('');
+  };
+
+  const handleSaveEditedRefill = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingRefill) {
+      onSaveRefill(editingRefill);
+      setEditingRefill(null);
+    }
+  };
+
+  const handleCreateDoctor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDocName.trim()) return;
+    onSaveDoctor({
+      id: `doc_${Date.now()}`,
+      name: newDocName,
+      specialty: newDocSpecialty || 'Specialist',
+      clinicName: newDocClinic || 'Medical Center',
+      phone: newDocPhone || '+91 98260 12345',
+      emergencyPhone: newDocEmergency || '+91 98260 99999',
+      email: newDocEmail,
+      address: newDocAddress,
+    });
+    setShowAddDoctorModal(false);
+  };
+
+  const handleSaveEditedDoctor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingDoctor) {
+      onSaveDoctor(editingDoctor);
+      setEditingDoctor(null);
+    }
+  };
+
+  const handleBookAppointmentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const doc = doctors.find((d) => d.id === selectedDoctorId) || primaryDoctor;
+    onBookAppointment({
+      doctorId: doc.id,
+      doctorName: doc.name,
+      scheduledTimeMillis: new Date(`${aptDate}T${aptTime}`).getTime() || Date.now() + 86400000,
+      scheduledDateString: aptDate,
+      scheduledTimeString: aptTime,
+      reason: aptReason,
+      status: 'SCHEDULED',
+      notes: aptNotes,
+    });
+    setShowBookAppointmentModal(false);
+    setAptNotes('');
   };
 
   const doctorBriefingText = `
 ================================================================================
                     PAIOS CLINICAL VISIT BRIEFING DOCUMENT
 Generated: ${new Date().toLocaleString()} | Patient Profile: Alex
+Primary Physician: ${primaryDoctor.name} (${primaryDoctor.specialty})
+Clinic: ${primaryDoctor.clinicName} | Emergency Direct: ${primaryDoctor.emergencyPhone}
 ================================================================================
 1. ACTIVE MEDICATIONS (RECORDED REGIMEN)
-${medications.map((m) => `  • ${m.genericName} (${m.brandName}) ${m.dosageStrength}${m.dosageUnit} - ${m.instructions} [RxNorm CUI: ${m.rxNormCui || 'N/A'}] (Dr: ${m.prescribingDoctor || 'Unspecified'})`).join('\n')}
+${medications.map((m) => `  • ${m.genericName} (${m.brandName}) ${m.dosageStrength}${m.dosageUnit} - ${m.instructions} [RxNorm CUI: ${m.rxNormCui || 'N/A'}] (Dr: ${m.prescribingDoctor || primaryDoctor.name})`).join('\n')}
 
 2. ADHERENCE SUMMARY (TODAY & RECENT)
   • Adherence Score: ${adherencePercent}% (${takenCount}/${totalCount} doses recorded today)
@@ -147,7 +312,7 @@ ${lowSupplyRefills.map((r) => `  ⚠️ ${r.medicationName}: Only ${r.quantityRe
 
 5. PATIENT PREPARED DISCUSSION POINTS
   • Discuss morning alertness and whether evening dose timing should be adjusted.
-  • Review potential multi-agent serotonergic / anticholinergic overlaps.
+  • Review potential multi-agent serotonergic / anticholinergic overlaps with ${primaryDoctor.name}.
 ================================================================================
 NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
 ================================================================================
@@ -175,25 +340,46 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-400">
-              RxNorm-grounded regimen tracking, deterministic dose ledger & clinical safety support
+              Primary Physician: <strong className="text-emerald-300">{primaryDoctor.name}</strong> • RxNorm Grounded Engine
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Doctor Emergency Phone Call Tag */}
+          <a
+            href={`tel:${primaryDoctor.emergencyPhone.replace(/\s+/g, '')}`}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 rounded-xl transition-all shadow-sm"
+          >
+            <Phone className="w-3.5 h-3.5 text-amber-400" />
+            <span>Dr. Emergency: {primaryDoctor.emergencyPhone}</span>
+          </a>
+
+          <button
+            onClick={() => {
+              setSelectedDoctorId(primaryDoctor.id);
+              setShowBookAppointmentModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-sm"
+          >
+            <CalendarCheck className="w-3.5 h-3.5" />
+            <span>Book Appointment</span>
+          </button>
+
           <button
             onClick={() => setShowEmergencyModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 rounded-xl transition-all shadow-sm"
           >
             <ShieldAlert className="w-4 h-4" />
-            <span>Emergency Red-Flag Check</span>
+            <span>Red-Flag Safety</span>
           </button>
+
           <button
             onClick={() => setShowAddMedModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Medication</span>
+            <span>Add Med</span>
           </button>
         </div>
       </div>
@@ -206,11 +392,24 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
             <span className="font-semibold text-amber-300">Medication Refill Warning:</span>
             <div className="text-slate-300">
               {lowSupplyRefills.map((r) => (
-                <div key={r.id} className="flex items-center justify-between py-0.5">
+                <div key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between py-1 border-b border-amber-500/20 last:border-0 gap-2">
                   <span>
-                    <strong>{r.medicationName}</strong> — {r.quantityRemaining} {r.unit} remaining ({Math.max(1, Math.floor(r.quantityRemaining / (r.dailyBurnRate || 1)))} days supply left)
+                    <strong>{r.medicationName}</strong> — Only <span className="font-bold text-amber-300">{r.quantityRemaining} {r.unit}</span> left ({Math.max(1, Math.floor(r.quantityRemaining / (r.dailyBurnRate || 1)))} days supply)
                   </span>
-                  <span className="text-amber-400 font-mono text-xs">{r.pharmacyPhone || 'Call Pharmacy'}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onUpdateRefill(r.id, r.quantityRemaining + 30)}
+                      className="px-2.5 py-1 text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded-lg border border-amber-500/40"
+                    >
+                      + Quick Refill 30
+                    </button>
+                    <button
+                      onClick={() => setEditingRefill(r)}
+                      className="px-2.5 py-1 text-xs bg-slate-800 text-slate-300 rounded-lg"
+                    >
+                      Edit Supply
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -250,20 +449,16 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
               <span className="text-emerald-400">OK</span>
             )}
           </div>
-          <div className="text-xs text-slate-500">Refill burn rate tracker</div>
+          <div className="text-xs text-slate-500">{refillInventories.length} Medications Tracked</div>
         </div>
 
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Latest Vitals</span>
-            <Activity className="w-4 h-4 text-cyan-400" />
+            <span>Primary Physician</span>
+            <UserCheck className="w-4 h-4 text-cyan-400" />
           </div>
-          <div className="text-lg font-bold text-white">
-            {latestVital ? `${latestVital.systolicBp || '--'}/${latestVital.diastolicBp || '--'}` : '120/80'}
-          </div>
-          <div className="text-xs text-slate-500">
-            {latestVital?.restingHeartRate ? `${latestVital.restingHeartRate} bpm` : '68 bpm resting'}
-          </div>
+          <div className="text-sm font-bold text-white truncate">{primaryDoctor.name}</div>
+          <div className="text-xs text-emerald-400 truncate">{primaryDoctor.specialty.split('&')[0]}</div>
         </div>
       </div>
 
@@ -290,14 +485,26 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
           }`}
         >
           <Pill className="w-4 h-4" />
-          <span>Active Regimen & Refill Vault</span>
+          <span>Regimen & Refill Vault</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('doctors')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all whitespace-nowrap ${
+            activeSubTab === 'doctors'
+              ? 'bg-slate-800 text-cyan-400 font-semibold shadow-inner'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          <span>Doctors & Appointments ({appointments.filter(a => a.status === 'SCHEDULED').length})</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('vitals')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all whitespace-nowrap ${
             activeSubTab === 'vitals'
-              ? 'bg-slate-800 text-cyan-400 font-semibold shadow-inner'
+              ? 'bg-slate-800 text-rose-400 font-semibold shadow-inner'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
           }`}
         >
@@ -330,7 +537,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
         </button>
       </div>
 
-      {/* TAB CONTENT 1: Today's Schedule & Dose Ledger */}
+      {/* SUB-TAB 1: Today's Schedule & Dose Ledger */}
       {activeSubTab === 'schedule' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -384,14 +591,10 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
                   </div>
 
                   {/* Metadata Indicators */}
-                  <div className="flex items-center gap-3 text-xs text-slate-400 pt-1 border-t border-slate-800/60">
-                    {med?.foodRelation && (
-                      <span className="capitalize bg-slate-800/60 px-2 py-0.5 rounded text-slate-300">
-                        {med.foodRelation.replace('_', ' ')}
-                      </span>
-                    )}
+                  <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60">
+                    <span className="text-slate-300">Doctor: {med?.prescribingDoctor || primaryDoctor.name}</span>
                     {refill && (
-                      <span className={refill.quantityRemaining <= 7 ? 'text-amber-400 font-medium' : 'text-slate-400'}>
+                      <span className={refill.quantityRemaining <= 7 ? 'text-amber-400 font-bold' : 'text-slate-400'}>
                         Supply: {refill.quantityRemaining} {refill.unit} left
                       </span>
                     )}
@@ -437,21 +640,29 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
         </div>
       )}
 
-      {/* TAB CONTENT 2: Active Regimen & Refill Inventory Vault */}
+      {/* SUB-TAB 2: Active Regimen & Refill Inventory Vault */}
       {activeSubTab === 'regimen' && (
         <div className="space-y-6">
           {/* Active Regimen List */}
           <div className="space-y-4">
-            <h2 className="text-base font-semibold text-white flex items-center gap-2">
-              <Pill className="w-4 h-4 text-indigo-400" />
-              <span>Active Prescriptions & Regimen Details</span>
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                <Pill className="w-4 h-4 text-indigo-400" />
+                <span>Active Prescriptions & Regimen Details</span>
+              </h2>
+              <button
+                onClick={() => setShowAddMedModal(true)}
+                className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Prescribed Medication</span>
+              </button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {medications.map((med) => {
-                const refill = refillInventories.find((r) => r.medicationId === med.id);
                 return (
-                  <div key={med.id} className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-3">
+                  <div key={med.id} className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-3 relative group">
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-2">
@@ -463,9 +674,18 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
                         </p>
                       </div>
 
-                      <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
-                        RxCUI: {med.rxNormCui || '284205'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+                          RxCUI: {med.rxNormCui || '284205'}
+                        </span>
+                        <button
+                          onClick={() => onDeleteMedication(med.id)}
+                          className="p-1 text-slate-500 hover:text-red-400 rounded transition-colors"
+                          title="Delete Medication"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="text-xs text-slate-300 bg-slate-950/50 p-3 rounded-xl border border-slate-800/80">
@@ -473,7 +693,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-800">
-                      <span>Doctor: {med.prescribingDoctor || 'Sarah Jenkins, MD'}</span>
+                      <span>Doctor: <strong className="text-slate-200">{med.prescribingDoctor || primaryDoctor.name}</strong></span>
                       <span className="text-emerald-400 font-medium">Daily: {med.scheduleTimes.join(', ')}</span>
                     </div>
                   </div>
@@ -482,12 +702,27 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
             </div>
           </div>
 
-          {/* Refill Inventory Vault */}
+          {/* Refill Inventory Vault (Fully Editable / Modifiable) */}
           <div className="space-y-4 pt-4 border-t border-slate-800">
-            <h2 className="text-base font-semibold text-white flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 text-amber-400" />
-              <span>Refill Vault & Pharmacy Supply Inventory</span>
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 text-amber-400" />
+                  <span>Refill Vault & Pharmacy Supply Inventory</span>
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Edit, increase, decrease, or remove medication stock amounts in real-time
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowAddRefillModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold rounded-xl self-start sm:self-auto"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Add Supply Item</span>
+              </button>
+            </div>
 
             <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
@@ -496,7 +731,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
                     <tr>
                       <th className="px-4 py-3">Medication</th>
                       <th className="px-4 py-3">Remaining Supply</th>
-                      <th className="px-4 py-3">Days Left</th>
+                      <th className="px-4 py-3">Quick Adjust</th>
                       <th className="px-4 py-3">Pharmacy Info</th>
                       <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
@@ -508,31 +743,92 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
 
                       return (
                         <tr key={refill.id} className="hover:bg-slate-800/40 transition-colors">
-                          <td className="px-4 py-3 font-medium text-white">{refill.medicationName}</td>
-                          <td className="px-4 py-3 font-mono">
-                            <span className={isLow ? 'text-amber-400 font-bold' : 'text-slate-200'}>
-                              {refill.quantityRemaining} {refill.unit}
-                            </span>
+                          <td className="px-4 py-3 font-medium text-white">
+                            <div>{refill.medicationName}</div>
+                            <div className="text-xs text-slate-500 font-mono">
+                              Threshold: {refill.minimumThresholdDays} days
+                            </div>
                           </td>
+
+                          {/* Remaining Supply Indicator */}
                           <td className="px-4 py-3">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                isLow ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-300'
-                              }`}
-                            >
-                              {daysLeft} days
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-mono text-base font-bold ${isLow ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                {refill.quantityRemaining}
+                              </span>
+                              <span className="text-xs text-slate-400">{refill.unit}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  isLow ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-300'
+                                }`}
+                              >
+                                {daysLeft}d left
+                              </span>
+                            </div>
                           </td>
+
+                          {/* Increase / Decrease Amount Left */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => onUpdateRefill(refill.id, Math.max(0, refill.quantityRemaining - 10))}
+                                className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-mono"
+                                title="Decrease by 10"
+                              >
+                                -10
+                              </button>
+                              <button
+                                onClick={() => onUpdateRefill(refill.id, Math.max(0, refill.quantityRemaining - 1))}
+                                className="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-mono"
+                                title="Decrease by 1"
+                              >
+                                -1
+                              </button>
+                              <button
+                                onClick={() => onUpdateRefill(refill.id, refill.quantityRemaining + 1)}
+                                className="px-2 py-1 text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded font-mono border border-emerald-500/20"
+                                title="Increase by 1"
+                              >
+                                +1
+                              </button>
+                              <button
+                                onClick={() => onUpdateRefill(refill.id, refill.quantityRemaining + 10)}
+                                className="px-2 py-1 text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded font-mono border border-emerald-500/20"
+                                title="Increase by 10"
+                              >
+                                +10
+                              </button>
+                              <button
+                                onClick={() => onUpdateRefill(refill.id, refill.quantityRemaining + 30)}
+                                className="px-2 py-1 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded font-mono font-bold"
+                                title="Increase by 30"
+                              >
+                                +30
+                              </button>
+                            </div>
+                          </td>
+
                           <td className="px-4 py-3 text-xs text-slate-400">
-                            <div>{refill.pharmacyName || 'CVS Pharmacy'}</div>
+                            <div>{refill.pharmacyName || 'Pharmacy'}</div>
                             <div className="text-slate-500 font-mono">{refill.pharmacyPhone || '(555) 019-2831'}</div>
                           </td>
+
+                          {/* Edit / Delete Buttons */}
                           <td className="px-4 py-3 text-right space-x-1">
                             <button
-                              onClick={() => onUpdateRefill(refill.id, refill.quantityRemaining + 30)}
-                              className="px-2.5 py-1 text-xs bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-lg border border-emerald-500/30"
+                              onClick={() => setEditingRefill(refill)}
+                              className="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg inline-flex items-center gap-1"
                             >
-                              + Refill 30
+                              <Edit2 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+
+                            <button
+                              onClick={() => onDeleteRefill(refill.id)}
+                              className="px-2.5 py-1 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg border border-red-500/30 inline-flex items-center gap-1"
+                              title="Delete Refill Record"
+                            >
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           </td>
                         </tr>
@@ -546,7 +842,230 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
         </div>
       )}
 
-      {/* TAB CONTENT 3: Vitals & Symptom Logger */}
+      {/* SUB-TAB 3: Doctors Directory & Appointment Booking */}
+      {activeSubTab === 'doctors' && (
+        <div className="space-y-6">
+          {/* Prescribing Physician Card Banner (Featured Dr Devendra Ratnani) */}
+          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-300 font-bold text-xl shrink-0">
+                  DR
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-white">{primaryDoctor.name}</h2>
+                    <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                      Primary Clinician
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">{primaryDoctor.specialty} • {primaryDoctor.clinicName}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingDoctor(primaryDoctor)}
+                  className="px-3.5 py-2 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl flex items-center gap-1.5"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>Edit Doctor Info</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setSelectedDoctorId(primaryDoctor.id);
+                    setShowBookAppointmentModal(true);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl shadow flex items-center gap-1.5"
+                >
+                  <CalendarCheck className="w-4 h-4" />
+                  <span>Book Appointment</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Phone className="w-4 h-4 text-cyan-400 shrink-0" />
+                <div>
+                  <span className="text-slate-500 block text-[10px]">CLINIC PHONE</span>
+                  <a href={`tel:${primaryDoctor.phone}`} className="hover:underline font-mono font-medium">{primaryDoctor.phone}</a>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-slate-300">
+                <PhoneCall className="w-4 h-4 text-amber-400 shrink-0" />
+                <div>
+                  <span className="text-amber-400 block text-[10px] font-bold">EMERGENCY DIRECT NUMBER</span>
+                  <a href={`tel:${primaryDoctor.emergencyPhone}`} className="hover:underline font-mono font-bold text-amber-300">
+                    {primaryDoctor.emergencyPhone}
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-slate-300">
+                <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
+                <div>
+                  <span className="text-slate-500 block text-[10px]">ADDRESS / LOCATION</span>
+                  <span className="truncate block text-slate-300">{primaryDoctor.address || 'Medical Enclave'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* All Doctors List */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-cyan-400" />
+                <span>Saved Healthcare Specialists Directory</span>
+              </h3>
+
+              <button
+                onClick={() => setShowAddDoctorModal(true)}
+                className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Doctor</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {doctors.map((doc) => (
+                <div key={doc.id} className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="text-base font-bold text-white">{doc.name}</h4>
+                      <p className="text-xs text-slate-400">{doc.specialty}</p>
+                      <p className="text-xs text-slate-500">{doc.clinicName}</p>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditingDoctor(doc)}
+                        className="p-1.5 text-slate-400 hover:text-white rounded bg-slate-800"
+                        title="Edit Doctor Info"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => onDeleteDoctor(doc.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-400 rounded bg-slate-800"
+                        title="Delete Doctor"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs font-mono text-slate-300 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Phone:</span>
+                      <span>{doc.phone}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-400 font-semibold">Emergency Direct:</span>
+                      <span className="text-amber-300 font-bold">{doc.emergencyPhone}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 text-xs">
+                    <span className="text-slate-400 truncate">{doc.email || 'N/A'}</span>
+                    <button
+                      onClick={() => {
+                        setSelectedDoctorId(doc.id);
+                        setShowBookAppointmentModal(true);
+                      }}
+                      className="px-3 py-1 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 rounded-lg font-semibold border border-cyan-500/30"
+                    >
+                      Book Consultation
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Appointments Management List */}
+          <div className="space-y-4 pt-4 border-t border-slate-800">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-indigo-400" />
+                <span>Scheduled Clinical Appointments</span>
+              </h3>
+
+              <button
+                onClick={() => {
+                  setSelectedDoctorId(primaryDoctor.id);
+                  setShowBookAppointmentModal(true);
+                }}
+                className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Schedule New Appointment</span>
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {appointments.length === 0 ? (
+                <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-400 space-y-2">
+                  <Calendar className="w-8 h-8 text-slate-600 mx-auto" />
+                  <p>No upcoming clinic appointments scheduled.</p>
+                </div>
+              ) : (
+                appointments.map((apt) => (
+                  <div key={apt.id} className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 text-xs font-mono bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 font-semibold">
+                          {apt.scheduledDateString} at {apt.scheduledTimeString}
+                        </span>
+                        <h4 className="text-sm font-bold text-white">{apt.doctorName}</h4>
+                      </div>
+                      <p className="text-xs text-slate-300"><strong>Reason:</strong> {apt.reason}</p>
+                      {apt.notes && <p className="text-xs text-slate-500 italic">"{apt.notes}"</p>}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                          apt.status === 'SCHEDULED'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : apt.status === 'COMPLETED'
+                            ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                        }`}
+                      >
+                        {apt.status}
+                      </span>
+
+                      {apt.status === 'SCHEDULED' && (
+                        <button
+                          onClick={() => onUpdateAppointmentStatus(apt.id, 'COMPLETED')}
+                          className="px-2.5 py-1 text-xs bg-emerald-600 text-white rounded-lg font-medium"
+                        >
+                          Complete
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => onDeleteAppointment(apt.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-400 bg-slate-800 rounded-lg"
+                        title="Delete Appointment"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 4: Vitals & Symptom Logger */}
       {activeSubTab === 'vitals' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Logger Form */}
@@ -650,7 +1169,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-xl shadow-md transition-all"
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl shadow-md transition-all"
               >
                 Log Vital & Symptom Record
               </button>
@@ -695,7 +1214,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
         </div>
       )}
 
-      {/* TAB CONTENT 4: Doctor Visit Briefing */}
+      {/* SUB-TAB 5: Doctor Visit Briefing */}
       {activeSubTab === 'briefing' && (
         <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -719,7 +1238,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
         </div>
       )}
 
-      {/* TAB CONTENT 5: Drug Safety Review */}
+      {/* SUB-TAB 6: Drug Safety Review */}
       {activeSubTab === 'safety' && (
         <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-6">
           <div className="flex items-center gap-3">
@@ -741,7 +1260,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
                 1. Serotonergic Overlap (Sertraline 50 mg + Clomipramine 25 mg)
               </h3>
               <p className="text-slate-400">
-                Co-administration of an SSRI and a TCA involves dual serotonergic uptake inhibition. Discuss with your physician monitoring for early signs of Serotonin Toxicity (e.g. tremor, hyperreflexia, sweating).
+                Co-administration of an SSRI and a TCA involves dual serotonergic uptake inhibition. Discuss with {primaryDoctor.name} monitoring for early signs of Serotonin Toxicity (e.g. tremor, hyperreflexia, sweating).
               </p>
             </div>
 
@@ -781,7 +1300,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              If you or someone nearby is experiencing any of the following symptoms, call emergency services immediately:
+              If you or someone nearby is experiencing any of the following symptoms, call emergency services or your doctor immediately:
             </p>
 
             <ul className="text-xs text-slate-200 space-y-1.5 list-disc list-inside bg-slate-950 p-3.5 rounded-xl border border-slate-800 font-mono">
@@ -791,18 +1310,35 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
               <li>Severe disorientation, hyperthermia, or uncontrollable tremors</li>
             </ul>
 
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1 text-xs">
+              <div className="font-bold text-amber-300">Doctor Emergency Direct Line:</div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-200">{primaryDoctor.name} ({primaryDoctor.specialty.split('&')[0]})</span>
+                <a href={`tel:${primaryDoctor.emergencyPhone}`} className="font-mono font-bold text-amber-400 hover:underline">
+                  {primaryDoctor.emergencyPhone}
+                </a>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between gap-3 pt-2">
               <a
-                href="tel:911"
-                className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg text-center"
+                href={`tel:${primaryDoctor.emergencyPhone.replace(/\s+/g, '')}`}
+                className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg text-center"
               >
                 <PhoneCall className="w-4 h-4" />
-                <span>Call Emergency Services (911 / 112)</span>
+                <span>Call Dr. Emergency ({primaryDoctor.emergencyPhone})</span>
+              </a>
+
+              <a
+                href="tel:911"
+                className="py-3 px-4 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg text-center"
+              >
+                <span>Call 911</span>
               </a>
 
               <button
                 onClick={() => setShowEmergencyModal(false)}
-                className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl"
+                className="px-3 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl"
               >
                 Dismiss
               </button>
@@ -867,6 +1403,19 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
               </div>
 
               <div>
+                <label className="block text-slate-400 mb-1">Prescribing Doctor</label>
+                <select
+                  value={newDoctor}
+                  onChange={(e) => setNewDoctor(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                >
+                  {doctors.map((d) => (
+                    <option key={d.id} value={d.name}>{d.name} ({d.specialty})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-slate-400 mb-1">Instructions</label>
                 <input
                   type="text"
@@ -887,6 +1436,473 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
                 <button
                   type="button"
                   onClick={() => setShowAddMedModal(false)}
+                  className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Refill Modal */}
+      {editingRefill && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-amber-400" />
+              <span>Edit Medication Stock & Refill Details</span>
+            </h2>
+
+            <form onSubmit={handleSaveEditedRefill} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1">Medication Name</label>
+                <input
+                  type="text"
+                  value={editingRefill.medicationName}
+                  onChange={(e) => setEditingRefill({ ...editingRefill, medicationName: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 mb-1">Remaining Supply Amount</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editingRefill.quantityRemaining}
+                    onChange={(e) => setEditingRefill({ ...editingRefill, quantityRemaining: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono text-base font-bold text-emerald-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Unit Type</label>
+                  <input
+                    type="text"
+                    value={editingRefill.unit}
+                    onChange={(e) => setEditingRefill({ ...editingRefill, unit: e.target.value })}
+                    placeholder="tablets / capsules / mL"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 mb-1">Low Supply Threshold (Days)</label>
+                  <input
+                    type="number"
+                    value={editingRefill.minimumThresholdDays}
+                    onChange={(e) => setEditingRefill({ ...editingRefill, minimumThresholdDays: parseInt(e.target.value) || 7 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Daily Burn Rate</label>
+                  <input
+                    type="number"
+                    value={editingRefill.dailyBurnRate}
+                    onChange={(e) => setEditingRefill({ ...editingRefill, dailyBurnRate: parseFloat(e.target.value) || 1 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Pharmacy Name</label>
+                <input
+                  type="text"
+                  value={editingRefill.pharmacyName || ''}
+                  onChange={(e) => setEditingRefill({ ...editingRefill, pharmacyName: e.target.value })}
+                  placeholder="e.g. CVS Pharmacy"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Pharmacy Phone</label>
+                <input
+                  type="text"
+                  value={editingRefill.pharmacyPhone || ''}
+                  onChange={(e) => setEditingRefill({ ...editingRefill, pharmacyPhone: e.target.value })}
+                  placeholder="(555) 019-2831"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl"
+                >
+                  Save Stock Updates
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingRefill(null)}
+                  className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Supply Refill Modal */}
+      {showAddRefillModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <PlusCircle className="w-5 h-5 text-amber-400" />
+              <span>Add Supply Item to Refill Vault</span>
+            </h2>
+
+            <form onSubmit={handleCreateRefillItem} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1">Medication Name & Strength *</label>
+                <input
+                  type="text"
+                  required
+                  value={newRefillMedName}
+                  onChange={(e) => setNewRefillMedName(e.target.value)}
+                  placeholder="e.g. Sertraline HCl 50 mg"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 mb-1">Total Quantity</label>
+                  <input
+                    type="number"
+                    value={newRefillQty}
+                    onChange={(e) => setNewRefillQty(e.target.value)}
+                    placeholder="30"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Unit</label>
+                  <input
+                    type="text"
+                    value={newRefillUnit}
+                    onChange={(e) => setNewRefillUnit(e.target.value)}
+                    placeholder="tablets"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Pharmacy Name</label>
+                <input
+                  type="text"
+                  value={newRefillPharmacy}
+                  onChange={(e) => setNewRefillPharmacy(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Pharmacy Phone</label>
+                <input
+                  type="text"
+                  value={newRefillPhone}
+                  onChange={(e) => setNewRefillPhone(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl"
+                >
+                  Add Supply Stock
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddRefillModal(false)}
+                  className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Doctor Modal */}
+      {editingDoctor && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-cyan-400" />
+              <span>Edit Doctor Information & Emergency Contact</span>
+            </h2>
+
+            <form onSubmit={handleSaveEditedDoctor} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1">Doctor Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingDoctor.name}
+                  onChange={(e) => setEditingDoctor({ ...editingDoctor, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Specialty</label>
+                <input
+                  type="text"
+                  value={editingDoctor.specialty}
+                  onChange={(e) => setEditingDoctor({ ...editingDoctor, specialty: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Clinic / Hospital Name</label>
+                <input
+                  type="text"
+                  value={editingDoctor.clinicName}
+                  onChange={(e) => setEditingDoctor({ ...editingDoctor, clinicName: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 mb-1">Clinic Phone</label>
+                  <input
+                    type="text"
+                    value={editingDoctor.phone}
+                    onChange={(e) => setEditingDoctor({ ...editingDoctor, phone: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-amber-400 font-bold mb-1">Emergency Direct Phone *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingDoctor.emergencyPhone}
+                    onChange={(e) => setEditingDoctor({ ...editingDoctor, emergencyPhone: e.target.value })}
+                    className="w-full bg-slate-950 border border-amber-500/50 rounded-xl p-2.5 text-amber-300 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Clinic Address</label>
+                <input
+                  type="text"
+                  value={editingDoctor.address || ''}
+                  onChange={(e) => setEditingDoctor({ ...editingDoctor, address: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-xl"
+                >
+                  Save Doctor Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingDoctor(null)}
+                  className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Doctor Modal */}
+      {showAddDoctorModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-cyan-400" />
+              <span>Add Healthcare Specialist Contact</span>
+            </h2>
+
+            <form onSubmit={handleCreateDoctor} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1">Doctor Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newDocName}
+                  onChange={(e) => setNewDocName(e.target.value)}
+                  placeholder="e.g. Dr Devendra Ratnani"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Specialty</label>
+                <input
+                  type="text"
+                  value={newDocSpecialty}
+                  onChange={(e) => setNewDocSpecialty(e.target.value)}
+                  placeholder="Neuropsychiatry & Mind Care Specialist"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Clinic Name</label>
+                <input
+                  type="text"
+                  value={newDocClinic}
+                  onChange={(e) => setNewDocClinic(e.target.value)}
+                  placeholder="Ratnani Mind & Care Clinic"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 mb-1">Clinic Phone</label>
+                  <input
+                    type="text"
+                    value={newDocPhone}
+                    onChange={(e) => setNewDocPhone(e.target.value)}
+                    placeholder="+91 98260 12345"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-amber-400 font-bold mb-1">Emergency Phone *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newDocEmergency}
+                    onChange={(e) => setNewDocEmergency(e.target.value)}
+                    placeholder="+91 98260 99999"
+                    className="w-full bg-slate-950 border border-amber-500/50 rounded-xl p-2.5 text-amber-300 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-xl"
+                >
+                  Save Specialist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddDoctorModal(false)}
+                  className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Book Appointment Modal */}
+      {showBookAppointmentModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <CalendarCheck className="w-5 h-5 text-indigo-400" />
+              <span>Book Appointment with Specialist</span>
+            </h2>
+
+            <form onSubmit={handleBookAppointmentSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1">Select Doctor</label>
+                <select
+                  value={selectedDoctorId || primaryDoctor.id}
+                  onChange={(e) => setSelectedDoctorId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-semibold"
+                >
+                  {doctors.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.specialty})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-400 mb-1">Appointment Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={aptDate}
+                    onChange={(e) => setAptDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Scheduled Time</label>
+                  <input
+                    type="time"
+                    required
+                    value={aptTime}
+                    onChange={(e) => setAptTime(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Consultation Reason / Goal</label>
+                <input
+                  type="text"
+                  required
+                  value={aptReason}
+                  onChange={(e) => setAptReason(e.target.value)}
+                  placeholder="e.g. Routine Medication Review & Adherence Check"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">Notes / Questions to Ask</label>
+                <textarea
+                  rows={2}
+                  value={aptNotes}
+                  onChange={(e) => setAptNotes(e.target.value)}
+                  placeholder="e.g. Discuss morning alertness and refill stock."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow"
+                >
+                  Confirm Appointment
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBookAppointmentModal(false)}
                   className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl"
                 >
                   Cancel

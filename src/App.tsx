@@ -63,6 +63,8 @@ export const App: React.FC = () => {
   const [doseEvents, setDoseEvents] = useState<DoseEvent[]>([]);
   const [refillInventories, setRefillInventories] = useState<RefillInventory[]>([]);
   const [vitalSigns, setVitalSigns] = useState<VitalSign[]>([]);
+  const [doctors, setDoctors] = useState<DoctorContact[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
 
   // Search
   const [searchResults, setSearchResults] = useState<SearchResults>({
@@ -102,6 +104,8 @@ export const App: React.FC = () => {
     setDoseEvents(PAIOSStorage.getDoseEvents());
     setRefillInventories(PAIOSStorage.getRefillInventories());
     setVitalSigns(PAIOSStorage.getVitalSigns());
+    setDoctors(PAIOSStorage.getDoctors());
+    setAppointments(PAIOSStorage.getAppointments());
   };
 
   useEffect(() => {
@@ -369,6 +373,16 @@ export const App: React.FC = () => {
     reloadState();
   };
 
+  const handleSaveRefill = (refill: RefillInventory) => {
+    PAIOSStorage.saveRefillInventory(refill);
+    reloadState();
+  };
+
+  const handleDeleteRefill = (id: string) => {
+    PAIOSStorage.deleteRefillInventory(id);
+    reloadState();
+  };
+
   const handleLogVital = (vital: Omit<VitalSign, 'id' | 'timestampMillis'>) => {
     PAIOSStorage.logVitalSign(vital);
     reloadState();
@@ -376,6 +390,36 @@ export const App: React.FC = () => {
 
   const handleAddMedication = (med: Medication) => {
     PAIOSStorage.saveMedication(med);
+    reloadState();
+  };
+
+  const handleDeleteMedication = (id: string) => {
+    PAIOSStorage.deleteMedication(id);
+    reloadState();
+  };
+
+  const handleSaveDoctor = (doc: DoctorContact) => {
+    PAIOSStorage.saveDoctor(doc);
+    reloadState();
+  };
+
+  const handleDeleteDoctor = (id: string) => {
+    PAIOSStorage.deleteDoctor(id);
+    reloadState();
+  };
+
+  const handleBookAppointment = (aptData: Omit<Appointment, 'id' | 'createdAtMillis'>) => {
+    PAIOSStorage.bookAppointment(aptData);
+    reloadState();
+  };
+
+  const handleUpdateAppointmentStatus = (id: string, status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED') => {
+    PAIOSStorage.updateAppointmentStatus(id, status);
+    reloadState();
+  };
+
+  const handleDeleteAppointment = (id: string) => {
+    PAIOSStorage.deleteAppointment(id);
     reloadState();
   };
 
@@ -399,6 +443,19 @@ export const App: React.FC = () => {
         PAIOSStorage.logVitalSign({
           symptoms: `${payload.symptomName || 'Symptom'} (Severity: ${payload.severity || 1}/10)`,
           dizzinessSeverity: payload.symptomName?.toLowerCase().includes('dizz') ? payload.severity : undefined,
+        });
+      } else if (actionType === 'BOOK_APPOINTMENT' || payload.type === 'BOOK_APPOINTMENT') {
+        const doctors = PAIOSStorage.getDoctors();
+        const doc = doctors.find((d) => d.name.toLowerCase().includes((payload.doctorName || '').toLowerCase())) || doctors[0];
+        PAIOSStorage.bookAppointment({
+          doctorId: doc?.id || 'doc_1',
+          doctorName: doc?.name || 'Dr Devendra Ratnani',
+          scheduledTimeMillis: Date.now() + 86400000 * (payload.daysFromNow || 1),
+          scheduledDateString: payload.dateString || getTodayDateString(),
+          scheduledTimeString: payload.timeString || '10:00',
+          reason: payload.reason || 'AI Booked Consultation',
+          status: 'SCHEDULED',
+          notes: payload.notes || 'Booked via PAIOS AI Assistant',
         });
       }
       reloadState();
@@ -509,10 +566,20 @@ export const App: React.FC = () => {
                   doseEvents={doseEvents}
                   refillInventories={refillInventories}
                   vitalSigns={vitalSigns}
+                  doctors={doctors}
+                  appointments={appointments}
                   onLogDose={handleLogDose}
                   onUpdateRefill={handleUpdateRefill}
+                  onSaveRefill={handleSaveRefill}
+                  onDeleteRefill={handleDeleteRefill}
                   onLogVital={handleLogVital}
                   onAddMedication={handleAddMedication}
+                  onDeleteMedication={handleDeleteMedication}
+                  onSaveDoctor={handleSaveDoctor}
+                  onDeleteDoctor={handleDeleteDoctor}
+                  onBookAppointment={handleBookAppointment}
+                  onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
+                  onDeleteAppointment={handleDeleteAppointment}
                 />
               )}
 

@@ -100,6 +100,30 @@ export interface StudyCard {
   easeFactor: number;
 }
 
+export interface DoctorContact {
+  id: string;
+  name: string;
+  specialty: string;
+  clinicName: string;
+  phone: string;
+  emergencyPhone: string;
+  email?: string;
+  address?: string;
+}
+
+export interface Appointment {
+  id: string;
+  doctorId: string;
+  doctorName: string;
+  scheduledTimeMillis: number;
+  scheduledDateString: string; // 'YYYY-MM-DD'
+  scheduledTimeString: string; // '10:30'
+  reason: string;
+  status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
+  notes?: string;
+  createdAtMillis: number;
+}
+
 // Health & Medication Management Interfaces
 export interface Medication {
   id: string;
@@ -164,7 +188,7 @@ export interface AIMessage {
   sender?: "USER" | "AI";
   isUser?: boolean;
   text: string;
-  actionType?: "ADD_TASK" | "START_ACTIVITY" | "SAVE_NOTE" | "LOG_DOSE" | "LOG_SYMPTOM" | null;
+  actionType?: "ADD_TASK" | "START_ACTIVITY" | "SAVE_NOTE" | "LOG_DOSE" | "LOG_SYMPTOM" | "BOOK_APPOINTMENT" | null;
   actionPayloadJson?: string | null;
   isActionConfirmed?: boolean | null;
   timestampMillis: number;

@@ -15,6 +15,8 @@ import {
   DoseStatus,
   RefillInventory,
   VitalSign,
+  DoctorContact,
+  Appointment,
 } from './types';
 
 const STORAGE_KEYS = {
@@ -33,6 +35,8 @@ const STORAGE_KEYS = {
   DOSE_EVENTS: 'paios_dose_events_v1',
   REFILLS: 'paios_refills_v1',
   VITALS: 'paios_vitals_v1',
+  DOCTORS: 'paios_doctors_v1',
+  APPOINTMENTS: 'paios_appointments_v1',
 };
 
 export function getTodayDateString(): string {
@@ -48,6 +52,45 @@ export function getStartOfDayMillis(): number {
   now.setHours(0, 0, 0, 0);
   return now.getTime();
 }
+
+// Initial Sample Doctors & Clinicians
+const initialDoctors: DoctorContact[] = [
+  {
+    id: 'doc_1',
+    name: 'Dr Devendra Ratnani',
+    specialty: 'Neuropsychiatry & Mind Care Specialist',
+    clinicName: 'Ratnani Mind & Care Clinic',
+    phone: '+91 98260 12345',
+    emergencyPhone: '+91 98260 99999',
+    email: 'dr.ratnani@ratnaniclinic.org',
+    address: 'Suite 402, Medical Enclave, City Healthcare Center',
+  },
+  {
+    id: 'doc_2',
+    name: 'Dr. Robert Vance',
+    specialty: 'Cardiology Specialist',
+    clinicName: 'Vance Heart Institute',
+    phone: '+1 (555) 392-1002',
+    emergencyPhone: '+1 (555) 911-CARD',
+    email: 'contact@vanceheart.com',
+    address: 'Building B, Metro Hospital Complex',
+  },
+];
+
+const initialAppointments: Appointment[] = [
+  {
+    id: 'apt_1',
+    doctorId: 'doc_1',
+    doctorName: 'Dr Devendra Ratnani',
+    scheduledTimeMillis: Date.now() + 86400000 * 3, // 3 days from now
+    scheduledDateString: getTodayDateString(),
+    scheduledTimeString: '10:30',
+    reason: 'Routine Medication Review & Adherence Check',
+    status: 'SCHEDULED',
+    notes: 'Bring 30-day vitals summary and refill status.',
+    createdAtMillis: Date.now() - 86400000,
+  },
+];
 
 // Initial Sample Medications (Clinical Standard Sample Regimen)
 const initialMedications: Medication[] = [
@@ -65,7 +108,7 @@ const initialMedications: Medication[] = [
     scheduleTimes: ['08:00'],
     foodRelation: 'with_meals',
     createdAtMillis: Date.now() - 86400000 * 30,
-    prescribingDoctor: 'Dr. Sarah Jenkins (Psychiatry)',
+    prescribingDoctor: 'Dr Devendra Ratnani',
   },
   {
     id: 'med_2',
@@ -81,7 +124,7 @@ const initialMedications: Medication[] = [
     scheduleTimes: ['08:00'],
     foodRelation: 'no_restriction',
     createdAtMillis: Date.now() - 86400000 * 30,
-    prescribingDoctor: 'Dr. Robert Vance (Cardiology)',
+    prescribingDoctor: 'Dr. Robert Vance',
   },
   {
     id: 'med_3',
@@ -97,7 +140,7 @@ const initialMedications: Medication[] = [
     scheduleTimes: ['21:00'],
     foodRelation: 'after_meals',
     createdAtMillis: Date.now() - 86400000 * 20,
-    prescribingDoctor: 'Dr. Sarah Jenkins (Psychiatry)',
+    prescribingDoctor: 'Dr Devendra Ratnani',
   },
   {
     id: 'med_4',
@@ -113,7 +156,7 @@ const initialMedications: Medication[] = [
     scheduleTimes: ['22:00'],
     foodRelation: 'no_restriction',
     createdAtMillis: Date.now() - 86400000 * 45,
-    prescribingDoctor: 'Dr. Sarah Jenkins (Psychiatry)',
+    prescribingDoctor: 'Dr Devendra Ratnani',
   },
   {
     id: 'med_5',
@@ -129,7 +172,7 @@ const initialMedications: Medication[] = [
     scheduleTimes: ['22:00'],
     foodRelation: 'no_restriction',
     createdAtMillis: Date.now() - 86400000 * 15,
-    prescribingDoctor: 'Dr. Sarah Jenkins (Psychiatry)',
+    prescribingDoctor: 'Dr Devendra Ratnani',
   },
 ];
 
@@ -849,6 +892,21 @@ export const storage = {
   getRefillInventories(): RefillInventory[] {
     return load(STORAGE_KEYS.REFILLS, initialRefills);
   },
+  saveRefillInventory(refill: RefillInventory): RefillInventory {
+    const refills = this.getRefillInventories();
+    const idx = refills.findIndex((r) => r.id === refill.id);
+    if (idx >= 0) {
+      refills[idx] = refill;
+    } else {
+      refills.unshift(refill);
+    }
+    save(STORAGE_KEYS.REFILLS, refills);
+    return refill;
+  },
+  deleteRefillInventory(id: string): void {
+    const list = this.getRefillInventories().filter((r) => r.id !== id);
+    save(STORAGE_KEYS.REFILLS, list);
+  },
   updateRefillQuantity(id: string, deltaOrAbsolute: number, isAbsolute: boolean = false): RefillInventory | null {
     const refills = this.getRefillInventories();
     const item = refills.find((r) => r.id === id || r.medicationId === id);
@@ -860,6 +918,59 @@ export const storage = {
     }
     save(STORAGE_KEYS.REFILLS, refills);
     return item;
+  },
+  getDoctors(): DoctorContact[] {
+    return load(STORAGE_KEYS.DOCTORS, initialDoctors);
+  },
+  saveDoctor(doc: DoctorContact): DoctorContact {
+    const list = this.getDoctors();
+    const idx = list.findIndex((d) => d.id === doc.id);
+    if (idx >= 0) {
+      list[idx] = doc;
+    } else {
+      list.unshift(doc);
+    }
+    save(STORAGE_KEYS.DOCTORS, list);
+    return doc;
+  },
+  deleteDoctor(id: string): void {
+    const list = this.getDoctors().filter((d) => d.id !== id);
+    save(STORAGE_KEYS.DOCTORS, list);
+  },
+  getAppointments(): Appointment[] {
+    return load(STORAGE_KEYS.APPOINTMENTS, initialAppointments);
+  },
+  bookAppointment(aptData: Omit<Appointment, 'id' | 'createdAtMillis'>): Appointment {
+    const list = this.getAppointments();
+    const newApt: Appointment = {
+      ...aptData,
+      id: `apt_${Date.now()}`,
+      createdAtMillis: Date.now(),
+    };
+    list.unshift(newApt);
+    save(STORAGE_KEYS.APPOINTMENTS, list);
+
+    this.addTimelineEntry({
+      title: `Appointment Booked with ${aptData.doctorName}`,
+      category: 'Health',
+      timestampMillis: Date.now(),
+      note: `Scheduled for ${aptData.scheduledDateString} at ${aptData.scheduledTimeString} | Reason: ${aptData.reason}`,
+      type: 'HEALTH',
+    });
+
+    return newApt;
+  },
+  updateAppointmentStatus(id: string, status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED'): void {
+    const list = this.getAppointments();
+    const apt = list.find((a) => a.id === id);
+    if (apt) {
+      apt.status = status;
+      save(STORAGE_KEYS.APPOINTMENTS, list);
+    }
+  },
+  deleteAppointment(id: string): void {
+    const list = this.getAppointments().filter((a) => a.id !== id);
+    save(STORAGE_KEYS.APPOINTMENTS, list);
   },
   getVitalSigns(): VitalSign[] {
     return load(STORAGE_KEYS.VITALS, initialVitals);
@@ -981,6 +1092,8 @@ export const storage = {
     save(STORAGE_KEYS.MEDICATIONS, initialMedications);
     save(STORAGE_KEYS.REFILLS, initialRefills);
     save(STORAGE_KEYS.VITALS, initialVitals);
+    save(STORAGE_KEYS.DOCTORS, initialDoctors);
+    save(STORAGE_KEYS.APPOINTMENTS, initialAppointments);
     save(STORAGE_KEYS.DOSE_EVENTS, {});
   },
   clearAllData(): void {
@@ -1009,6 +1122,8 @@ export const storage = {
     const doseEvents = this.getDoseEvents(todayDateStr);
     const refills = this.getRefillInventories();
     const vitals = this.getVitalSigns().slice(0, 3);
+    const doctors = this.getDoctors();
+    const appointments = this.getAppointments().filter((a) => a.status === 'SCHEDULED');
 
     const lowSupplyRefills = refills.filter((r) => r.quantityRemaining / (r.dailyBurnRate || 1) <= r.minimumThresholdDays);
 
@@ -1026,6 +1141,13 @@ CURRENT LOCAL TIME & DATE METADATA:
 
 ACTIVE SESSION / ACTIVITY:
 ${active ? `- Currently Active: "${active.activityName}" [Category: ${active.category}] | Started At: ${formatTime(active.startTimeMillis)} | Running Duration: ${Math.floor((now.getTime() - active.startTimeMillis) / 60000)} minutes` : '- No active session currently running.'}
+
+HEALTH & CLINICIAN CONTEXT:
+- Prescribing Doctors & Clinicians:
+${doctors.map((d) => `  * ${d.name} (${d.specialty} - ${d.clinicName}) | Phone: ${d.phone} | Emergency Direct: ${d.emergencyPhone}`).join('\n') || '  * No doctor contacts saved.'}
+
+- Upcoming Scheduled Appointments:
+${appointments.map((a) => `  * [${a.scheduledDateString} at ${a.scheduledTimeString}] with ${a.doctorName} | Reason: ${a.reason}`).join('\n') || '  * No upcoming appointments.'}
 
 HEALTH & MEDICATION REGIMEN STATUS (TODAY: ${todayDateStr}):
 - Active Medications (${medications.length}):
