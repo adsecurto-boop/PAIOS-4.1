@@ -1,5 +1,36 @@
-// Self-Hosted PAIOS Sync Module (Zero Third-Party Database Dependencies)
-// Seamless cross-device synchronization via Vercel & Node server endpoints
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signInAnonymously,
+  signOut,
+  onAuthStateChanged,
+  updateProfile,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  onSnapshot,
+} from 'firebase/firestore';
+import firebaseConfig from '../firebase-applet-config.json';
+
+// Initialize Firebase App
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+// Initialize Firestore targeting applet database ID
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 
 export interface PaiosUser {
   uid: string;
@@ -14,6 +45,7 @@ const STORAGE_KEYS = {
   ACTIVITIES: 'paios_activities_v1',
   ACTIVE_ACTIVITY: 'paios_active_activity_v1',
   TIMELINE: 'paios_timeline_v1',
+  TIMETABLE: 'paios_timetable_v1',
   CAPTURES: 'paios_captures_v1',
   CHECKIN: 'paios_checkin_v1',
   REVIEW: 'paios_review_v1',
@@ -21,131 +53,118 @@ const STORAGE_KEYS = {
   STUDY_CARDS: 'paios_study_cards_v1',
   AI_MESSAGES: 'paios_ai_messages_v1',
   SETTINGS: 'paios_settings_v1',
+  MEDICATIONS: 'paios_medications_v1',
+  DOSE_EVENTS: 'paios_dose_events_v1',
+  REFILLS: 'paios_refills_v1',
+  VITALS: 'paios_vitals_v1',
+  DOCTORS: 'paios_doctors_v1',
+  APPOINTMENTS: 'paios_appointments_v1',
 };
 
-// In-Memory & Local Auth State Management
-let authStateListeners: Array<(user: PaiosUser | null) => void> = [];
-let currentUser: PaiosUser | null = (() => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const saved = localStorage.getItem('paios_user');
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
-})();
-
-function setCurrentUser(user: PaiosUser | null) {
-  currentUser = user;
-  if (typeof window !== 'undefined') {
-    if (user) {
-      localStorage.setItem('paios_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('paios_user');
-    }
-  }
-  authStateListeners.forEach((cb) => cb(user));
-}
-
-export const auth = {
-  get currentUser() {
-    return currentUser;
-  },
-};
+let quotaExceededFlag = false;
 
 export function isQuotaExceeded(): boolean {
-  return false;
-}
-
-export function getSavedVaultCode(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('paios_sync_vault_code');
-}
-
-export function setSavedVaultCode(code: string | null): void {
-  if (typeof window === 'undefined') return;
-  if (code) {
-    localStorage.setItem('paios_sync_vault_code', code.trim().toUpperCase());
-  } else {
-    localStorage.removeItem('paios_sync_vault_code');
-  }
+  return quotaExceededFlag;
 }
 
 export function onAuthChange(callback: (user: PaiosUser | null) => void): () => void {
-  authStateListeners.push(callback);
-  callback(currentUser);
-  return () => {
-    authStateListeners = authStateListeners.filter((cb) => cb !== callback);
-  };
+  return onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+    if (firebaseUser) {
+      const user: PaiosUser = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'PAIOS User',
+        photoURL: firebaseUser.photoURL,
+      };
+      callback(user);
+    } else {
+      callback(null);
+    }
+  });
 }
 
-export async function signInWithGuestSync(): Promise<PaiosUser | null> {
+// Sign-In Handlers
+export async function signInWithGoogle(): Promise<PaiosUser> {
   try {
-    const res = await fetch('/api/sync/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'guest' }),
-    });
-    const data = await res.json();
-    if (data.user) {
-      setCurrentUser(data.user);
-      return data.user;
+    const result = await signInWithPopup(auth, googleProvider);
+    const fbUser = result.user;
+    return {
+      uid: fbUser.uid,
+      email: fbUser.email,
+      displayName: fbUser.displayName || 'Google User',
+      photoURL: fbUser.photoURL,
+    };
+  } catch (err: any) {
+    console.error('Google Popup Sign In Error:', err);
+    if (err.code === 'auth/unauthorized-domain') {
+      throw new Error(`UNAUTHORIZED_DOMAIN|${window.location.hostname}`);
     }
-  } catch (err) {
-    console.error('Guest sync sign-in error:', err);
+    if (err.code === 'auth/operation-not-allowed') {
+      throw new Error('EMAIL_AUTH_DISABLED');
+    }
+    throw new Error(err.message || 'Google Sign In failed');
   }
-  return null;
 }
 
 export async function signUpWithEmail(email: string, pass: string, name?: string): Promise<PaiosUser> {
-  const res = await fetch('/api/sync/auth', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'signup', email, password: pass, displayName: name }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.user) {
-    throw new Error(data.error || 'Failed to sign up');
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+    if (name && name.trim()) {
+      await updateProfile(cred.user, { displayName: name.trim() });
+    }
+    return {
+      uid: cred.user.uid,
+      email: cred.user.email,
+      displayName: cred.user.displayName || name || email.split('@')[0],
+      photoURL: cred.user.photoURL,
+    };
+  } catch (err: any) {
+    if (err.code === 'auth/operation-not-allowed') {
+      throw new Error('EMAIL_AUTH_DISABLED');
+    }
+    throw new Error(err.message || 'Email Sign Up failed');
   }
-  setCurrentUser(data.user);
-  return data.user;
 }
 
 export async function signInWithEmail(email: string, pass: string): Promise<PaiosUser> {
-  const res = await fetch('/api/sync/auth', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'login', email, password: pass }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.user) {
-    throw new Error(data.error || 'Failed to sign in');
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+    return {
+      uid: cred.user.uid,
+      email: cred.user.email,
+      displayName: cred.user.displayName || email.split('@')[0],
+      photoURL: cred.user.photoURL,
+    };
+  } catch (err: any) {
+    throw new Error(err.message || 'Email Sign In failed');
   }
-  setCurrentUser(data.user);
-  return data.user;
 }
 
-export async function signInWithGoogle(): Promise<PaiosUser> {
-  const email = prompt('Enter your Google email to connect with SSO:');
-  if (!email) throw new Error('Sign-in cancelled');
-  const user = {
-    uid: `google_${email.replace(/[^a-zA-Z0-9]/g, '_')}`,
-    email,
-    displayName: email.split('@')[0],
-  };
-  setCurrentUser(user);
-  return user;
+export async function signInWithGuestSync(): Promise<PaiosUser> {
+  try {
+    const cred = await signInAnonymously(auth);
+    return {
+      uid: cred.user.uid,
+      email: null,
+      displayName: 'Guest Cloud User',
+    };
+  } catch (err: any) {
+    if (err.code === 'auth/admin-restricted-operation' || err.code === 'auth/operation-not-allowed') {
+      throw new Error('ANONYMOUS_DISABLED');
+    }
+    throw new Error(err.message || 'Guest Cloud Sync failed');
+  }
 }
 
-export async function resetPassword(_email: string): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
+export async function resetPassword(email: string): Promise<void> {
+  await sendPasswordResetEmail(auth, email.trim());
 }
 
 export async function logOut(): Promise<void> {
-  setCurrentUser(null);
+  await signOut(auth);
 }
 
-// Local storage snapshot helper
+// Local Storage Snapshot Helper
 function getLocalSnapshot(): Record<string, any> {
   const snapshot: Record<string, any> = {};
   if (typeof window === 'undefined') return snapshot;
@@ -162,129 +181,88 @@ function getLocalSnapshot(): Record<string, any> {
 
 let isApplyingRemoteUpdate = false;
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let lastLocalSaveTime = 0;
 
-// Storage listener for auto-push
+// Listen to local changes to push to Firestore
 if (typeof window !== 'undefined') {
   window.addEventListener('paios_storage_change', () => {
     if (isApplyingRemoteUpdate) return;
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(() => {
-      const vaultCode = getSavedVaultCode();
-      if (vaultCode) {
-        syncLocalToVault(vaultCode);
-      } else if (currentUser) {
-        syncLocalToCloud(currentUser.uid);
-      }
-    }, 1200);
+      syncLocalToCloud(currentUser.uid);
+    }, 1000);
   });
 }
 
-export async function syncLocalToVault(vaultCode: string): Promise<void> {
-  if (isApplyingRemoteUpdate || !vaultCode) return;
-  try {
-    const snapshot = getLocalSnapshot();
-    await fetch(`/api/sync/vault/${encodeURIComponent(vaultCode.trim().toUpperCase())}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ snapshot }),
-    });
-  } catch (err) {
-    console.error('Failed to sync local data to Vault:', err);
-  }
-}
-
+// Push local data snapshot to Firestore
 export async function syncLocalToCloud(userId: string): Promise<void> {
   if (isApplyingRemoteUpdate || !userId) return;
   try {
     const snapshot = getLocalSnapshot();
-    await fetch(`/api/sync/user/${encodeURIComponent(userId.trim())}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ snapshot }),
-    });
-  } catch (err) {
-    console.error('Failed to sync local data to Cloud:', err);
+    const userDocRef = doc(db, 'user_data', userId);
+    lastLocalSaveTime = Date.now();
+    await setDoc(userDocRef, {
+      snapshot,
+      updatedAt: lastLocalSaveTime,
+      userUid: userId,
+    }, { merge: true });
+  } catch (err: any) {
+    console.error('Firestore sync write error:', err);
+    if (err.code === 'resource-exhausted') {
+      quotaExceededFlag = true;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('paios_quota_exceeded'));
+      }
+    }
   }
 }
 
-let lastVaultUpdate = 0;
-export function listenToVaultData(vaultCode: string, onSyncComplete?: () => void): () => void {
-  if (!vaultCode) return () => {};
+let lastRemoteUpdate = 0;
 
-  let active = true;
-
-  const poll = async () => {
-    if (!active) return;
-    try {
-      const res = await fetch(`/api/sync/vault/${encodeURIComponent(vaultCode.trim().toUpperCase())}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.snapshot && data.updatedAt > lastVaultUpdate) {
-          lastVaultUpdate = data.updatedAt;
-          isApplyingRemoteUpdate = true;
-          Object.entries(data.snapshot).forEach(([key, val]) => {
-            try {
-              localStorage.setItem(key, JSON.stringify(val));
-            } catch (e) {}
-          });
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('paios_storage_change'));
-          }
-          isApplyingRemoteUpdate = false;
-          if (onSyncComplete) onSyncComplete();
-        }
-      }
-    } catch (err) {
-      console.warn('Vault polling notice:', err);
-    }
-  };
-
-  poll();
-  const interval = setInterval(poll, 4000);
-
-  return () => {
-    active = false;
-    clearInterval(interval);
-  };
-}
-
-let lastUserUpdate = 0;
+// Listen to real-time changes from Firestore
 export function listenToCloudData(userId: string, onSyncComplete?: () => void): () => void {
   if (!userId) return () => {};
 
-  let active = true;
+  const userDocRef = doc(db, 'user_data', userId);
 
-  const poll = async () => {
-    if (!active) return;
-    try {
-      const res = await fetch(`/api/sync/user/${encodeURIComponent(userId.trim())}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.snapshot && data.updatedAt > lastUserUpdate) {
-          lastUserUpdate = data.updatedAt;
-          isApplyingRemoteUpdate = true;
-          Object.entries(data.snapshot).forEach(([key, val]) => {
-            try {
-              localStorage.setItem(key, JSON.stringify(val));
-            } catch (e) {}
-          });
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('paios_storage_change'));
-          }
-          isApplyingRemoteUpdate = false;
-          if (onSyncComplete) onSyncComplete();
-        }
-      }
-    } catch (err) {
-      console.warn('User cloud polling notice:', err);
+  const unsub = onSnapshot(userDocRef, (docSnap) => {
+    if (!docSnap.exists()) {
+      // First time user on cloud - upload initial local data to Firestore
+      syncLocalToCloud(userId);
+      return;
     }
-  };
 
-  poll();
-  const interval = setInterval(poll, 4000);
+    const data = docSnap.data();
+    const remoteUpdatedAt = data?.updatedAt || 0;
 
-  return () => {
-    active = false;
-    clearInterval(interval);
-  };
+    // Only apply remote update if it's newer than our last remote update and last local save
+    if (data?.snapshot && remoteUpdatedAt > lastRemoteUpdate && remoteUpdatedAt > lastLocalSaveTime) {
+      lastRemoteUpdate = remoteUpdatedAt;
+      isApplyingRemoteUpdate = true;
+      Object.entries(data.snapshot).forEach(([key, val]) => {
+        try {
+          localStorage.setItem(key, JSON.stringify(val));
+        } catch (e) {}
+      });
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('paios_storage_change'));
+      }
+      isApplyingRemoteUpdate = false;
+      if (onSyncComplete) onSyncComplete();
+    }
+  }, (err) => {
+    console.warn('Firestore snapshot listener notice:', err);
+    if (err.code === 'resource-exhausted') {
+      quotaExceededFlag = true;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('paios_quota_exceeded'));
+      }
+    }
+  });
+
+  return unsub;
 }

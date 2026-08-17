@@ -121,7 +121,7 @@ app.post('/api/sync/auth', (req, res) => {
 // API Endpoint: Gemini AI Chat
 app.post('/api/ai/chat', async (req, res) => {
   try {
-    const { userText, userContext, modelName, customApiKey } = req.body;
+    const { userText, userContext, modelName, customApiKey, role, taskComplexity, history } = req.body;
 
     if (!userText || typeof userText !== 'string') {
       res.status(400).json({ error: 'userText is required' });
@@ -168,18 +168,32 @@ app.post('/api/ai/chat', async (req, res) => {
       },
     });
 
-    const modelCandidates = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro'];
-    if (modelName && typeof modelName === 'string') {
-      if (modelName.includes('pro')) {
-        modelCandidates.unshift('gemini-2.5-pro');
-      } else {
-        modelCandidates.unshift('gemini-2.5-flash');
-      }
+    // Model candidate routing based on task complexity or explicit model selection
+    let modelCandidates: string[] = [];
+    const lowerModel = (modelName || '').toLowerCase();
+    const mode = taskComplexity || (lowerModel.includes('pro') ? 'complex' : lowerModel.includes('lite') ? 'fast' : 'general');
+
+    if (mode === 'complex') {
+      modelCandidates = ['gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-2.5-pro', 'gemini-2.5-flash'];
+    } else if (mode === 'fast') {
+      modelCandidates = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-2.5-flash'];
+    } else {
+      modelCandidates = ['gemini-3.5-flash', 'gemini-3.7-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
+    }
+
+    // Role Persona System Instructions
+    let roleDescription = 'You are PAIOS (Personal AI Operating System), a calm, highly intelligent personal productivity, life, and health assistant.';
+    if (role === 'sdet_mentor') {
+      roleDescription = 'You are PAIOS SDET & ISTQB Mentor, an expert software test automation lead and engineering study coach specializing in ISTQB CTFL certification, Playwright/Python/Selenium automation, test strategy, and code review.';
+    } else if (role === 'health_specialist') {
+      roleDescription = 'You are PAIOS Health & Wellness Companion, an empathetic health-tracking assistant specializing in non-prescriptive medication logs, symptom tracking, refill alerts, and lifestyle wellness.';
+    } else if (role === 'creative_coach') {
+      roleDescription = 'You are PAIOS Creative Brainstormer & Performance Coach, an energetic coach focused on problem-solving, career goal execution, habit design, and high-impact project ideas.';
     }
 
     const serverNow = new Date();
     const systemInstruction = `
-You are PAIOS (Personal AI Operating System), a calm, highly intelligent personal productivity, life, and health assistant.
+${roleDescription}
 You have direct access to the user's real-time local PAIOS context (activities, timeline, tasks, health/medications, check-ins, reviews, journal).
 
 CRITICAL HEALTH & CLINICAL SAFETY BOUNDARIES:
@@ -208,6 +222,30 @@ Active PAIOS Context & Metadata:
 ${userContext || 'No context available.'}
 `.trim();
 
+    // Build multi-turn contents array from history
+    const contents: any[] = [];
+    if (Array.isArray(history) && history.length > 0) {
+      // Format previous history turns (take up to 14 recent turns to manage context window)
+      const recentHistory = history.slice(-14);
+      for (const msg of recentHistory) {
+        if (msg && msg.text && typeof msg.text === 'string' && msg.text.trim()) {
+          const roleTag = msg.isUser || msg.sender === 'USER' || msg.role === 'user' ? 'user' : 'model';
+          contents.push({
+            role: roleTag,
+            parts: [{ text: msg.text }],
+          });
+        }
+      }
+    }
+
+    // Append latest prompt if not already last item in contents
+    if (contents.length === 0 || contents[contents.length - 1].parts[0].text !== userText) {
+      contents.push({
+        role: 'user',
+        parts: [{ text: userText }],
+      });
+    }
+
     let fullText = '';
     let lastError: any = null;
 
@@ -215,7 +253,7 @@ ${userContext || 'No context available.'}
       try {
         const response = await ai.models.generateContent({
           model: targetModel,
-          contents: userText,
+          contents,
           config: {
             systemInstruction,
             temperature: 0.7,
@@ -225,7 +263,7 @@ ${userContext || 'No context available.'}
         if (fullText) break;
       } catch (err: any) {
         lastError = err;
-        console.warn(`Model ${targetModel} call failed, trying next candidate:`, err?.message || err);
+        console.warn(`Model ${targetModel} call failed in multi-turn chat, trying next candidate:`, err?.message || err);
         await new Promise((r) => setTimeout(r, 400));
       }
     }

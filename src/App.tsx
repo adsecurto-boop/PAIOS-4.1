@@ -365,7 +365,7 @@ export const App: React.FC = () => {
   };
 
   // AI Chat Communication
-  const handleSendAiMessage = async (userText: string) => {
+  const handleSendAiMessage = async (userText: string, options?: { role?: string; taskComplexity?: string }) => {
     const userMsg: AiChatMessage = {
       id: Date.now(),
       text: userText,
@@ -377,6 +377,7 @@ export const App: React.FC = () => {
     reloadState();
 
     const contextStr = PAIOSStorage.getUserContextString();
+    const currentHistory = PAIOSStorage.getAiMessages();
 
     try {
       const response = await fetch('/api/ai/chat', {
@@ -387,6 +388,9 @@ export const App: React.FC = () => {
           userContext: contextStr,
           modelName: settings.preferredModel,
           customApiKey: settings.customApiKey,
+          role: options?.role || 'productivity',
+          taskComplexity: options?.taskComplexity || 'general',
+          history: currentHistory,
         }),
       });
 
@@ -420,6 +424,11 @@ export const App: React.FC = () => {
       PAIOSStorage.addAiMessage(errorMsg);
       reloadState();
     }
+  };
+
+  const handleClearAiChat = () => {
+    PAIOSStorage.clearAiChat();
+    reloadState();
   };
 
   // Health Handlers
@@ -676,6 +685,7 @@ export const App: React.FC = () => {
                   userContextString={PAIOSStorage.getUserContextString()}
                   onSendMessage={handleSendAiMessage}
                   onExecuteAction={handleExecuteAiAction}
+                  onClearHistory={handleClearAiChat}
                 />
               )}
 
