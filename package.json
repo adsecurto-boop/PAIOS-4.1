@@ -46,6 +46,7 @@
     "@capacitor/cli": "^6.0.0",
     "@capacitor/core": "^6.0.0",
     "@google/genai": "*",
+    "@vercel/speed-insights": "^2.0.0",
     "clsx": "^2.1.1",
     "express": "^4.21.2",
     "firebase": "^12.17.1",
