@@ -42,6 +42,44 @@ import {
 } from '../types';
 import { PAIOSStorage, getTodayDateString } from '../storage';
 
+export function calcRefillStockDetails(refill: RefillInventory, todayStr: string) {
+  const purchaseDateStr = refill.purchaseDateString || refill.lastRefillDateString || '2026-08-01';
+  const daysSupplied = refill.daysSupplied || 30;
+
+  const timingSlots: ('Morning' | 'Afternoon' | 'Night')[] =
+    refill.timingSlots && refill.timingSlots.length > 0
+      ? refill.timingSlots
+      : ['Morning'];
+
+  const dosesPerDay = refill.dosesPerDay || timingSlots.length || refill.dailyBurnRate || 1;
+  const totalBought = daysSupplied * dosesPerDay;
+
+  // Days elapsed calculation
+  const purchaseDate = new Date(purchaseDateStr);
+  const currentDate = new Date(todayStr);
+  const diffTime = Math.max(0, currentDate.getTime() - purchaseDate.getTime());
+  const daysElapsed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  const dosesConsumed = daysElapsed * dosesPerDay;
+  const formulaRemaining = Math.max(0, totalBought - dosesConsumed);
+  const daysLeftFormula = Math.max(0, Math.floor(formulaRemaining / dosesPerDay));
+
+  const isManuallyAdjusted = refill.quantityRemaining !== formulaRemaining;
+
+  return {
+    purchaseDateStr,
+    daysSupplied,
+    timingSlots,
+    dosesPerDay,
+    totalBought,
+    daysElapsed,
+    dosesConsumed,
+    formulaRemaining,
+    daysLeftFormula,
+    isManuallyAdjusted,
+  };
+}
+
 interface HealthScreenProps {
   medications: Medication[];
   doseEvents: DoseEvent[];
@@ -125,9 +163,13 @@ export const HealthScreen: React.FC<HealthScreenProps> = ({
 
   // New Refill Form State
   const [newRefillMedName, setNewRefillMedName] = useState('');
-  const [newRefillQty, setNewRefillQty] = useState('30');
+  const [newRefillPurchaseDate, setNewRefillPurchaseDate] = useState(getTodayDateString());
+  const [newRefillDaysSupplied, setNewRefillDaysSupplied] = useState('30');
+  const [newRefillMorning, setNewRefillMorning] = useState(true);
+  const [newRefillAfternoon, setNewRefillAfternoon] = useState(false);
+  const [newRefillNight, setNewRefillNight] = useState(false);
   const [newRefillUnit, setNewRefillUnit] = useState('tablets');
-  const [newRefillPharmacy, setNewRefillPharmacy] = useState('CVS Pharmacy');
+  const [newRefillPharmacy, setNewRefillPharmacy] = useState('CVS Pharmacy #4821');
   const [newRefillPhone, setNewRefillPhone] = useState('(555) 019-2831');
 
   // New Doctor Form State
@@ -221,19 +263,41 @@ export const HealthScreen: React.FC<HealthScreenProps> = ({
   const handleCreateRefillItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRefillMedName.trim()) return;
+
+    const slots: ('Morning' | 'Afternoon' | 'Night')[] = [];
+    if (newRefillMorning) slots.push('Morning');
+    if (newRefillAfternoon) slots.push('Afternoon');
+    if (newRefillNight) slots.push('Night');
+    if (slots.length === 0) slots.push('Morning');
+
+    const dosesPerDay = slots.length;
+    const daysSupplied = parseInt(newRefillDaysSupplied) || 30;
+    const totalQty = daysSupplied * dosesPerDay;
+
+    const purchaseDate = new Date(newRefillPurchaseDate || todayStr);
+    const currentDate = new Date(todayStr);
+    const diffTime = Math.max(0, currentDate.getTime() - purchaseDate.getTime());
+    const daysElapsed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const formulaRemaining = Math.max(0, totalQty - (daysElapsed * dosesPerDay));
+
     onSaveRefill({
       id: `refill_${Date.now()}`,
       medicationId: `med_custom_${Date.now()}`,
       medicationName: newRefillMedName,
-      quantityRemaining: parseInt(newRefillQty) || 30,
+      quantityRemaining: formulaRemaining,
       unit: newRefillUnit || 'tablets',
-      dailyBurnRate: 1,
+      dailyBurnRate: dosesPerDay,
       minimumThresholdDays: 7,
-      pharmacyName: newRefillPharmacy || 'Pharmacy',
-      pharmacyPhone: newRefillPhone || '(555) 000-0000',
+      pharmacyName: newRefillPharmacy || 'CVS Pharmacy #4821',
+      pharmacyPhone: newRefillPhone || '(555) 019-2831',
       refillsRemaining: 3,
-      lastRefillDateString: todayStr,
+      lastRefillDateString: newRefillPurchaseDate,
+      purchaseDateString: newRefillPurchaseDate,
+      daysSupplied: daysSupplied,
+      dosesPerDay: dosesPerDay,
+      timingSlots: slots,
     });
+
     setShowAddRefillModal(false);
     setNewRefillMedName('');
   };
@@ -241,7 +305,16 @@ export const HealthScreen: React.FC<HealthScreenProps> = ({
   const handleSaveEditedRefill = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingRefill) {
-      onSaveRefill(editingRefill);
+      const slots: ('Morning' | 'Afternoon' | 'Night')[] = editingRefill.timingSlots && editingRefill.timingSlots.length > 0
+        ? (editingRefill.timingSlots as ('Morning' | 'Afternoon' | 'Night')[])
+        : ['Morning'];
+      const dosesPerDay = editingRefill.dosesPerDay || slots.length || 1;
+      onSaveRefill({
+        ...editingRefill,
+        dailyBurnRate: dosesPerDay,
+        dosesPerDay,
+        timingSlots: slots,
+      });
       setEditingRefill(null);
     }
   };
@@ -724,50 +797,98 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
               </button>
             </div>
 
-            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden">
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs sm:text-sm text-slate-300">
                   <thead className="bg-slate-800/60 text-slate-400 uppercase font-mono text-[11px]">
                     <tr>
-                      <th className="px-4 py-3">Medication</th>
-                      <th className="px-4 py-3">Remaining Supply</th>
-                      <th className="px-4 py-3">Quick Adjust</th>
-                      <th className="px-4 py-3">Pharmacy Info</th>
+                      <th className="px-4 py-3">Medication & Purchase Info</th>
+                      <th className="px-4 py-3">Frequency & Timing</th>
+                      <th className="px-4 py-3">Calculated vs. Active Stock</th>
+                      <th className="px-4 py-3">Stock Adjustments</th>
                       <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
                     {refillInventories.map((refill) => {
-                      const daysLeft = Math.floor(refill.quantityRemaining / (refill.dailyBurnRate || 1));
-                      const isLow = daysLeft <= refill.minimumThresholdDays;
+                      const calc = calcRefillStockDetails(refill, todayStr);
+                      const daysLeftActual = Math.floor(refill.quantityRemaining / calc.dosesPerDay);
+                      const isLow = daysLeftActual <= refill.minimumThresholdDays;
 
                       return (
                         <tr key={refill.id} className="hover:bg-slate-800/40 transition-colors">
+                          {/* Medication & Purchase Info */}
                           <td className="px-4 py-3 font-medium text-white">
-                            <div>{refill.medicationName}</div>
-                            <div className="text-xs text-slate-500 font-mono">
-                              Threshold: {refill.minimumThresholdDays} days
+                            <div className="font-bold text-sm text-slate-100">{refill.medicationName}</div>
+                            <div className="text-xs text-slate-400 mt-1 space-y-0.5 font-mono">
+                              <div>
+                                Bought: <span className="text-cyan-300 font-semibold">{calc.purchaseDateStr}</span> ({calc.daysElapsed}d ago)
+                              </div>
+                              <div>
+                                Supplied: <span className="text-slate-300">{calc.daysSupplied} days</span> ({calc.totalBought} {refill.unit})
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Schedule Timing & Dose Frequency */}
+                          <td className="px-4 py-3 text-xs">
+                            <div className="font-semibold text-indigo-300 mb-1">
+                              {calc.dosesPerDay} time{calc.dosesPerDay > 1 ? 's' : ''} daily ({calc.dosesPerDay}x/day)
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1">
+                              {calc.timingSlots.map((slot) => (
+                                <span
+                                  key={slot}
+                                  className={`px-2 py-0.5 text-[10px] rounded-md font-medium border ${
+                                    slot === 'Morning'
+                                      ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                      : slot === 'Afternoon'
+                                      ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
+                                      : 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                                  }`}
+                                >
+                                  {slot === 'Morning' ? '🌅 Morning' : slot === 'Afternoon' ? '☀️ Afternoon' : '🌙 Night'}
+                                </span>
+                              ))}
                             </div>
                           </td>
 
                           {/* Remaining Supply Indicator */}
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <span className={`font-mono text-base font-bold ${isLow ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                {refill.quantityRemaining}
-                              </span>
-                              <span className="text-xs text-slate-400">{refill.unit}</span>
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                  isLow ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-300'
-                                }`}
-                              >
-                                {daysLeft}d left
-                              </span>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`font-mono text-base font-bold ${isLow ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                  {refill.quantityRemaining}
+                                </span>
+                                <span className="text-xs text-slate-400">{refill.unit}</span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    isLow ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-300'
+                                  }`}
+                                >
+                                  {daysLeftActual}d left
+                                </span>
+                              </div>
+
+                              {/* Formula Auto-Calculated Comparison */}
+                              <div className="text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+                                <span>Formula Calc: <strong className="text-slate-200">{calc.formulaRemaining}</strong> {refill.unit}</span>
+                                {calc.isManuallyAdjusted ? (
+                                  <button
+                                    onClick={() => onUpdateRefill(refill.id, calc.formulaRemaining)}
+                                    className="px-1.5 py-0.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded border border-indigo-500/30 text-[10px] transition-colors"
+                                    title="Sync active stock to formula calculated amount"
+                                  >
+                                    Reset to Calc
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-emerald-400/90 font-sans">✓ Synced</span>
+                                )}
+                              </div>
                             </div>
                           </td>
 
-                          {/* Increase / Decrease Amount Left */}
+                          {/* Increase / Decrease Stock Adjustments */}
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
                               <button
@@ -808,12 +929,7 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
                             </div>
                           </td>
 
-                          <td className="px-4 py-3 text-xs text-slate-400">
-                            <div>{refill.pharmacyName || 'Pharmacy'}</div>
-                            <div className="text-slate-500 font-mono">{refill.pharmacyPhone || '(555) 019-2831'}</div>
-                          </td>
-
-                          {/* Edit / Delete Buttons */}
+                          {/* Edit / Delete Actions */}
                           <td className="px-4 py-3 text-right space-x-1">
                             <button
                               onClick={() => setEditingRefill(refill)}
@@ -1447,198 +1563,399 @@ NOTICE: Generated automatically by PAIOS for patient-clinician discussion.
       )}
 
       {/* Edit Refill Modal */}
-      {editingRefill && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <RefreshCw className="w-5 h-5 text-amber-400" />
-              <span>Edit Medication Stock & Refill Details</span>
-            </h2>
+      {editingRefill && (() => {
+        const editCalc = calcRefillStockDetails(editingRefill, todayStr);
 
-            <form onSubmit={handleSaveEditedRefill} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-400 mb-1">Medication Name</label>
-                <input
-                  type="text"
-                  value={editingRefill.medicationName}
-                  onChange={(e) => setEditingRefill({ ...editingRefill, medicationName: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-                />
-              </div>
+        const handleToggleSlot = (slot: 'Morning' | 'Afternoon' | 'Night') => {
+          const currentSlots: ('Morning' | 'Afternoon' | 'Night')[] =
+            editingRefill.timingSlots && editingRefill.timingSlots.length > 0
+              ? (editingRefill.timingSlots as ('Morning' | 'Afternoon' | 'Night')[])
+              : ['Morning'];
 
-              <div className="grid grid-cols-2 gap-2">
+          let newSlots: ('Morning' | 'Afternoon' | 'Night')[];
+          if (currentSlots.includes(slot)) {
+            newSlots = currentSlots.filter(s => s !== slot);
+            if (newSlots.length === 0) newSlots = ['Morning'];
+          } else {
+            newSlots = [...currentSlots, slot];
+          }
+
+          const newDosesPerDay = newSlots.length;
+          setEditingRefill({
+            ...editingRefill,
+            timingSlots: newSlots,
+            dosesPerDay: newDosesPerDay,
+            dailyBurnRate: newDosesPerDay,
+          });
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <h2 className="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                <RefreshCw className="w-5 h-5 text-amber-400" />
+                <span>Edit Supply & Prescription Details</span>
+              </h2>
+
+              <form onSubmit={handleSaveEditedRefill} className="space-y-4 text-xs">
                 <div>
-                  <label className="block text-slate-400 mb-1">Remaining Supply Amount</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editingRefill.quantityRemaining}
-                    onChange={(e) => setEditingRefill({ ...editingRefill, quantityRemaining: Math.max(0, parseInt(e.target.value) || 0) })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono text-base font-bold text-emerald-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 mb-1">Unit Type</label>
+                  <label className="block text-slate-300 font-medium mb-1">Medication Name</label>
                   <input
                     type="text"
-                    value={editingRefill.unit}
-                    onChange={(e) => setEditingRefill({ ...editingRefill, unit: e.target.value })}
-                    placeholder="tablets / capsules / mL"
+                    required
+                    value={editingRefill.medicationName}
+                    onChange={(e) => setEditingRefill({ ...editingRefill, medicationName: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-400 mb-1">Low Supply Threshold (Days)</label>
-                  <input
-                    type="number"
-                    value={editingRefill.minimumThresholdDays}
-                    onChange={(e) => setEditingRefill({ ...editingRefill, minimumThresholdDays: parseInt(e.target.value) || 7 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Prescription Purchase Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={editingRefill.purchaseDateString || editingRefill.lastRefillDateString || '2026-08-01'}
+                      onChange={(e) => setEditingRefill({
+                        ...editingRefill,
+                        purchaseDateString: e.target.value,
+                        lastRefillDateString: e.target.value,
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Days Meds Supplied</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="365"
+                      value={editingRefill.daysSupplied || 30}
+                      onChange={(e) => setEditingRefill({
+                        ...editingRefill,
+                        daysSupplied: Math.max(1, parseInt(e.target.value) || 30),
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                    />
+                  </div>
                 </div>
 
+                {/* Timing & Dose Frequency Schedule */}
                 <div>
-                  <label className="block text-slate-400 mb-1">Daily Burn Rate</label>
-                  <input
-                    type="number"
-                    value={editingRefill.dailyBurnRate}
-                    onChange={(e) => setEditingRefill({ ...editingRefill, dailyBurnRate: parseFloat(e.target.value) || 1 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
-                  />
+                  <label className="block text-slate-300 font-medium mb-1.5">
+                    Dose Timing / Schedule (Times Daily)
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['Morning', 'Afternoon', 'Night'] as const).map((slot) => {
+                      const isChecked = (editingRefill.timingSlots || ['Morning']).includes(slot);
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => handleToggleSlot(slot)}
+                          className={`p-2.5 rounded-xl border text-center transition-all ${
+                            isChecked
+                              ? 'bg-amber-500/20 border-amber-500/50 text-amber-200 font-semibold'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <div className="text-xs">{slot === 'Morning' ? '🌅 Morning' : slot === 'Afternoon' ? '☀️ Afternoon' : '🌙 Night'}</div>
+                          <div className="text-[10px] opacity-75 font-mono">{slot === 'Morning' ? '08:00 AM' : slot === 'Afternoon' ? '01:00 PM' : '09:00 PM'}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1 font-mono">
+                    Frequency: <strong className="text-amber-300">{editCalc.dosesPerDay} time{editCalc.dosesPerDay > 1 ? 's' : ''} per day</strong> ({editCalc.timingSlots.join(', ')})
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-slate-400 mb-1">Pharmacy Name</label>
-                <input
-                  type="text"
-                  value={editingRefill.pharmacyName || ''}
-                  onChange={(e) => setEditingRefill({ ...editingRefill, pharmacyName: e.target.value })}
-                  placeholder="e.g. CVS Pharmacy"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-                />
-              </div>
+                {/* Formula Auto-Calculation Summary Box */}
+                <div className="bg-slate-950/80 border border-indigo-500/30 rounded-xl p-3 space-y-1.5 text-slate-300">
+                  <div className="flex items-center justify-between font-semibold text-indigo-300 text-xs">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Formula Auto-Calculation Engine</span>
+                    </span>
+                    <span className="text-[10px] font-mono bg-indigo-500/20 px-2 py-0.5 rounded text-indigo-300">
+                      {editCalc.daysElapsed} days elapsed
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-400 border-t border-slate-800 pt-1.5">
+                    <div>Total Supplied: <strong className="text-slate-200">{editCalc.totalBought} {editingRefill.unit}</strong></div>
+                    <div>Doses Consumed: <strong className="text-slate-200">{editCalc.dosesConsumed} {editingRefill.unit}</strong></div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold pt-1 border-t border-slate-800">
+                    <span className="text-slate-200">Auto-Calculated Remaining:</span>
+                    <span className="text-emerald-400 font-mono text-sm">{editCalc.formulaRemaining} {editingRefill.unit} ({editCalc.daysLeftFormula}d supply)</span>
+                  </div>
+                </div>
 
-              <div>
-                <label className="block text-slate-400 mb-1">Pharmacy Phone</label>
-                <input
-                  type="text"
-                  value={editingRefill.pharmacyPhone || ''}
-                  onChange={(e) => setEditingRefill({ ...editingRefill, pharmacyPhone: e.target.value })}
-                  placeholder="(555) 019-2831"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
-                />
-              </div>
+                {/* Active Stock & Adjustments */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">
+                      Active In-Stock Quantity
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editingRefill.quantityRemaining}
+                      onChange={(e) => setEditingRefill({ ...editingRefill, quantityRemaining: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono text-base font-bold text-emerald-400"
+                    />
+                  </div>
 
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl"
-                >
-                  Save Stock Updates
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditingRefill(null)}
-                  className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Unit Type</label>
+                    <input
+                      type="text"
+                      value={editingRefill.unit}
+                      onChange={(e) => setEditingRefill({ ...editingRefill, unit: e.target.value })}
+                      placeholder="tablets / capsules / mL"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-slate-400">Sync with Calculated Formula:</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingRefill({ ...editingRefill, quantityRemaining: editCalc.formulaRemaining })}
+                    className="px-2.5 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg"
+                  >
+                    Set to {editCalc.formulaRemaining} {editingRefill.unit}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Low Supply Threshold (Days)</label>
+                    <input
+                      type="number"
+                      value={editingRefill.minimumThresholdDays}
+                      onChange={(e) => setEditingRefill({ ...editingRefill, minimumThresholdDays: parseInt(e.target.value) || 7 })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Pharmacy Name</label>
+                    <input
+                      type="text"
+                      value={editingRefill.pharmacyName || ''}
+                      onChange={(e) => setEditingRefill({ ...editingRefill, pharmacyName: e.target.value })}
+                      placeholder="e.g. CVS Pharmacy"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl transition-colors"
+                  >
+                    Save Stock & Schedule Updates
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingRefill(null)}
+                    className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl hover:bg-slate-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Add Supply Refill Modal */}
-      {showAddRefillModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <PlusCircle className="w-5 h-5 text-amber-400" />
-              <span>Add Supply Item to Refill Vault</span>
-            </h2>
+      {showAddRefillModal && (() => {
+        const slots: ('Morning' | 'Afternoon' | 'Night')[] = [];
+        if (newRefillMorning) slots.push('Morning');
+        if (newRefillAfternoon) slots.push('Afternoon');
+        if (newRefillNight) slots.push('Night');
+        if (slots.length === 0) slots.push('Morning');
 
-            <form onSubmit={handleCreateRefillItem} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-400 mb-1">Medication Name & Strength *</label>
-                <input
-                  type="text"
-                  required
-                  value={newRefillMedName}
-                  onChange={(e) => setNewRefillMedName(e.target.value)}
-                  placeholder="e.g. Sertraline HCl 50 mg"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-                />
-              </div>
+        const dosesPerDay = slots.length;
+        const daysSupplied = parseInt(newRefillDaysSupplied) || 30;
+        const totalBought = daysSupplied * dosesPerDay;
 
-              <div className="grid grid-cols-2 gap-2">
+        const purchaseDate = new Date(newRefillPurchaseDate || todayStr);
+        const currentDate = new Date(todayStr);
+        const diffTime = Math.max(0, currentDate.getTime() - purchaseDate.getTime());
+        const daysElapsed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        const formulaRemaining = Math.max(0, totalBought - (daysElapsed * dosesPerDay));
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <h2 className="text-base font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
+                <PlusCircle className="w-5 h-5 text-amber-400" />
+                <span>Add Supply Item to Refill Vault</span>
+              </h2>
+
+              <form onSubmit={handleCreateRefillItem} className="space-y-4 text-xs">
                 <div>
-                  <label className="block text-slate-400 mb-1">Total Quantity</label>
+                  <label className="block text-slate-300 font-medium mb-1">Medication Name & Strength *</label>
                   <input
-                    type="number"
-                    value={newRefillQty}
-                    onChange={(e) => setNewRefillQty(e.target.value)}
-                    placeholder="30"
+                    type="text"
+                    required
+                    value={newRefillMedName}
+                    onChange={(e) => setNewRefillMedName(e.target.value)}
+                    placeholder="e.g. Sertraline HCl 50 mg"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Prescription Purchase Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={newRefillPurchaseDate}
+                      onChange={(e) => setNewRefillPurchaseDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-medium mb-1">Days Meds Supplied</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="365"
+                      value={newRefillDaysSupplied}
+                      onChange={(e) => setNewRefillDaysSupplied(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Timing Checkboxes */}
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">
+                    How many times / when to take meds:
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewRefillMorning(!newRefillMorning)}
+                      className={`p-2.5 rounded-xl border text-center transition-all ${
+                        newRefillMorning
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-200 font-semibold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div className="text-xs">🌅 Morning</div>
+                      <div className="text-[10px] opacity-75 font-mono">08:00 AM</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setNewRefillAfternoon(!newRefillAfternoon)}
+                      className={`p-2.5 rounded-xl border text-center transition-all ${
+                        newRefillAfternoon
+                          ? 'bg-sky-500/20 border-sky-500/50 text-sky-200 font-semibold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div className="text-xs">☀️ Afternoon</div>
+                      <div className="text-[10px] opacity-75 font-mono">01:00 PM</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setNewRefillNight(!newRefillNight)}
+                      className={`p-2.5 rounded-xl border text-center transition-all ${
+                        newRefillNight
+                          ? 'bg-purple-500/20 border-purple-500/50 text-purple-200 font-semibold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div className="text-xs">🌙 Night</div>
+                      <div className="text-[10px] opacity-75 font-mono">09:00 PM</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Auto Calculated Summary Preview */}
+                <div className="bg-slate-950/80 border border-amber-500/30 rounded-xl p-3 space-y-1.5 text-slate-300">
+                  <div className="flex items-center justify-between font-semibold text-amber-300 text-xs">
+                    <span>Calculated Inventory Projection</span>
+                    <span className="font-mono text-[10px]">{dosesPerDay} dose{dosesPerDay > 1 ? 's' : ''}/day</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-slate-400">
+                    <div>Total Meds Supplied: <strong className="text-slate-200">{totalBought} {newRefillUnit}</strong></div>
+                    <div>Days Elapsed: <strong className="text-slate-200">{daysElapsed} days</strong></div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold pt-1 border-t border-slate-800">
+                    <span>Initial Calculated Stock Left:</span>
+                    <span className="text-emerald-400 font-mono text-sm">{formulaRemaining} {newRefillUnit}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Unit Type</label>
+                    <input
+                      type="text"
+                      value={newRefillUnit}
+                      onChange={(e) => setNewRefillUnit(e.target.value)}
+                      placeholder="tablets"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Pharmacy Name</label>
+                    <input
+                      type="text"
+                      value={newRefillPharmacy}
+                      onChange={(e) => setNewRefillPharmacy(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 mb-1">Pharmacy Phone</label>
+                  <input
+                    type="text"
+                    value={newRefillPhone}
+                    onChange={(e) => setNewRefillPhone(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-slate-400 mb-1">Unit</label>
-                  <input
-                    type="text"
-                    value={newRefillUnit}
-                    onChange={(e) => setNewRefillUnit(e.target.value)}
-                    placeholder="tablets"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-                  />
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl transition-colors"
+                  >
+                    Add Supply Stock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddRefillModal(false)}
+                    className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl hover:bg-slate-700"
+                  >
+                    Cancel
+                  </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1">Pharmacy Name</label>
-                <input
-                  type="text"
-                  value={newRefillPharmacy}
-                  onChange={(e) => setNewRefillPharmacy(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1">Pharmacy Phone</label>
-                <input
-                  type="text"
-                  value={newRefillPhone}
-                  onChange={(e) => setNewRefillPhone(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-xl"
-                >
-                  Add Supply Stock
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddRefillModal(false)}
-                  className="px-4 py-2.5 bg-slate-800 text-slate-300 font-medium rounded-xl"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Edit Doctor Modal */}
       {editingDoctor && (

@@ -22,7 +22,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 }) => {
   const [name, setName] = useState(settings.userName);
   const [apiKey, setApiKey] = useState(settings.customApiKey || '');
-  const [selectedModel, setSelectedModel] = useState(settings.preferredModel || 'gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState(settings.preferredModel || 'gemini-3.7-flash');
+  const [officeStart, setOfficeStart] = useState(settings.officeStartTime || '13:00');
+  const [officeEnd, setOfficeEnd] = useState(settings.officeEndTime || '22:00');
+  const [bedtimeVal, setBedtimeVal] = useState(settings.bedtime || '00:00');
+  const [wakeTimeVal, setWakeTimeVal] = useState(settings.wakeTime || '07:30');
+  const [isWorkdayVal, setIsWorkdayVal] = useState(settings.isWorkday !== false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleSaveProfile = (e: React.FormEvent) => {
@@ -31,6 +36,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       userName: name.trim() || 'Alex',
       customApiKey: apiKey.trim() || undefined,
       preferredModel: selectedModel,
+      officeStartTime: officeStart,
+      officeEndTime: officeEnd,
+      bedtime: bedtimeVal,
+      wakeTime: wakeTimeVal,
+      isWorkday: isWorkdayVal,
     });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
@@ -98,6 +108,64 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             onChange={(e) => setName(e.target.value)}
             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
           />
+        </div>
+
+        <h3 className="font-heading font-bold text-base text-white border-b border-slate-800 pb-3 pt-2 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-emerald-400" /> Adaptive Timetable & Life Parameters
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Office Shift Start
+            </label>
+            <input
+              type="text"
+              value={officeStart}
+              onChange={(e) => setOfficeStart(e.target.value)}
+              placeholder="e.g. 13:00 or 1:00 PM"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Office Shift End
+            </label>
+            <input
+              type="text"
+              value={officeEnd}
+              onChange={(e) => setOfficeEnd(e.target.value)}
+              placeholder="e.g. 22:00 or 10:00 PM"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Bedtime Target
+            </label>
+            <input
+              type="text"
+              value={bedtimeVal}
+              onChange={(e) => setBedtimeVal(e.target.value)}
+              placeholder="e.g. 00:00 or 12:00 AM"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Wake Time Target
+            </label>
+            <input
+              type="text"
+              value={wakeTimeVal}
+              onChange={(e) => setWakeTimeVal(e.target.value)}
+              placeholder="e.g. 07:30 or 7:30 AM"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+            />
+          </div>
         </div>
 
         <h3 className="font-heading font-bold text-base text-white border-b border-slate-800 pb-3 pt-2 flex items-center gap-2">

@@ -1,7 +1,7 @@
 export type PriorityLevel = "LOW" | "NORMAL" | "HIGH" | "CRITICAL";
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type Category = "Work" | "Study" | "Coding" | "Testing" | "Personal" | "Exercise" | "Break" | "Health" | "Other";
-export type TimelineType = "ACTIVITY" | "TASK" | "CAPTURE" | "CHECKIN" | "JOURNAL" | "DOSE" | "VITAL";
+export type TimelineType = "ACTIVITY" | "TASK" | "CAPTURE" | "CHECKIN" | "JOURNAL" | "DOSE" | "VITAL" | "APPOINTMENT" | "HEALTH";
 
 export interface Task {
   id: number;
@@ -168,6 +168,10 @@ export interface RefillInventory {
   pharmacyPhone?: string;
   refillsRemaining: number;
   lastRefillDateString?: string;
+  purchaseDateString?: string; // Date prescription was bought (e.g. '2026-08-01')
+  daysSupplied?: number; // Days of medication supplied (e.g. 30, 60, 90)
+  dosesPerDay?: number; // Times per day to take (e.g. 1, 2, 3)
+  timingSlots?: ('Morning' | 'Afternoon' | 'Night')[]; // Slots e.g. ['Morning', 'Night']
 }
 
 export interface VitalSign {
@@ -206,6 +210,36 @@ export interface UserSettings {
   morningNotificationEnabled: boolean;
   eveningNotificationEnabled: boolean;
   preferredModel?: string;
+  officeStartTime?: string; // e.g. "13:00"
+  officeEndTime?: string;   // e.g. "22:00"
+  bedtime?: string;         // e.g. "00:00"
+  wakeTime?: string;        // e.g. "07:30"
+  isWorkday?: boolean;      // true for workday shift, false for week-off
+  goals?: string[];         // User long-term goals
+}
+
+export type TimetablePriority = "FIXED" | "HIGH" | "FLEXIBLE" | "OPTIONAL" | "RECOVERY";
+export type TimetableStatus = "planned" | "in_progress" | "completed" | "skipped" | "delayed" | "rescheduled" | "deferred";
+
+export interface AdaptiveTimetableBlock {
+  id: string;
+  start: string;            // "10:15"
+  end: string;              // "10:30"
+  duration_minutes: number;
+  activity: string;
+  category: Category | string;
+  goal?: string;
+  priority: TimetablePriority;
+  reason?: string;
+  status: TimetableStatus;
+  isAiGenerated?: boolean;
+}
+
+export interface AdaptiveTimetableResponse {
+  dateString: string;
+  generatedAtTimeStr: string;
+  explanation: string;
+  blocks: AdaptiveTimetableBlock[];
 }
 
 export interface SearchResults {

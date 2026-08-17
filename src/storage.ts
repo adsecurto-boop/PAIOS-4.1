@@ -17,6 +17,9 @@ import {
   VitalSign,
   DoctorContact,
   Appointment,
+  AdaptiveTimetableBlock,
+  AdaptiveTimetableResponse,
+  TimetableStatus,
 } from './types';
 
 const STORAGE_KEYS = {
@@ -24,6 +27,7 @@ const STORAGE_KEYS = {
   ACTIVITIES: 'paios_activities_v1',
   ACTIVE_ACTIVITY: 'paios_active_activity_v1',
   TIMELINE: 'paios_timeline_v1',
+  TIMETABLE: 'paios_timetable_v1',
   CAPTURES: 'paios_captures_v1',
   CHECKIN: 'paios_checkin_v1',
   REVIEW: 'paios_review_v1',
@@ -181,7 +185,7 @@ const initialRefills: RefillInventory[] = [
     id: 'refill_1',
     medicationId: 'med_1',
     medicationName: 'Sertraline HCl 50 mg',
-    quantityRemaining: 24,
+    quantityRemaining: 15,
     unit: 'tablets',
     dailyBurnRate: 1,
     minimumThresholdDays: 7,
@@ -189,38 +193,50 @@ const initialRefills: RefillInventory[] = [
     pharmacyPhone: '(555) 019-2831',
     refillsRemaining: 3,
     lastRefillDateString: '2026-08-01',
+    purchaseDateString: '2026-08-01',
+    daysSupplied: 30,
+    dosesPerDay: 1,
+    timingSlots: ['Morning'],
   },
   {
     id: 'refill_2',
     medicationId: 'med_2',
     medicationName: 'Propranolol HCl SR 40 mg',
-    quantityRemaining: 22,
+    quantityRemaining: 38,
     unit: 'capsules',
-    dailyBurnRate: 1,
+    dailyBurnRate: 2,
     minimumThresholdDays: 7,
     pharmacyName: 'CVS Pharmacy #4821',
     pharmacyPhone: '(555) 019-2831',
     refillsRemaining: 2,
-    lastRefillDateString: '2026-08-01',
+    lastRefillDateString: '2026-08-05',
+    purchaseDateString: '2026-08-05',
+    daysSupplied: 30,
+    dosesPerDay: 2,
+    timingSlots: ['Morning', 'Night'],
   },
   {
     id: 'refill_3',
     medicationId: 'med_3',
     medicationName: 'Clomipramine HCl 25 mg',
-    quantityRemaining: 15,
+    quantityRemaining: 24,
     unit: 'capsules',
     dailyBurnRate: 1,
     minimumThresholdDays: 7,
     pharmacyName: 'CVS Pharmacy #4821',
     pharmacyPhone: '(555) 019-2831',
     refillsRemaining: 1,
-    lastRefillDateString: '2026-08-01',
+    lastRefillDateString: '2026-08-10',
+    purchaseDateString: '2026-08-10',
+    daysSupplied: 30,
+    dosesPerDay: 1,
+    timingSlots: ['Night'],
   },
   {
     id: 'refill_4',
     medicationId: 'med_4',
     medicationName: 'Quetiapine 100 mg',
-    quantityRemaining: 5, // CRITICAL REFILL WARNING (< 7 days left)
+    quantityRemaining: 5, // Low stock warning
     unit: 'tablets',
     dailyBurnRate: 1,
     minimumThresholdDays: 7,
@@ -228,19 +244,27 @@ const initialRefills: RefillInventory[] = [
     pharmacyPhone: '(555) 019-2831',
     refillsRemaining: 1,
     lastRefillDateString: '2026-07-20',
+    purchaseDateString: '2026-07-20',
+    daysSupplied: 30,
+    dosesPerDay: 1,
+    timingSlots: ['Night'],
   },
   {
     id: 'refill_5',
     medicationId: 'med_5',
     medicationName: 'Clonazepam 0.5 mg',
-    quantityRemaining: 18,
+    quantityRemaining: 13,
     unit: 'tablets',
     dailyBurnRate: 1,
     minimumThresholdDays: 7,
     pharmacyName: 'CVS Pharmacy #4821',
     pharmacyPhone: '(555) 019-2831',
-    refillsRemaining: 0,
-    lastRefillDateString: '2026-08-01',
+    refillsRemaining: 2,
+    lastRefillDateString: '2026-08-14',
+    purchaseDateString: '2026-08-14',
+    daysSupplied: 15,
+    dosesPerDay: 1,
+    timingSlots: ['Night'],
   },
 ];
 
@@ -269,6 +293,17 @@ const initialSettings: UserSettings = {
   themeMode: 'DARK',
   morningNotificationEnabled: true,
   eveningNotificationEnabled: true,
+  officeStartTime: '13:00',
+  officeEndTime: '22:00',
+  bedtime: '00:00',
+  wakeTime: '07:30',
+  isWorkday: true,
+  goals: [
+    'Become an SDET / improve software testing career prospects',
+    'Complete ISTQB certification/study',
+    'Build and improve PAIOS',
+    'Improve Playwright/Python automation skills where relevant',
+  ],
 };
 
 const initialTasks: Task[] = [
@@ -1106,6 +1141,40 @@ export const storage = {
     });
     return JSON.stringify(backup, null, 2);
   },
+  // Adaptive Timetable Vault Methods
+  getAdaptiveTimetable(): AdaptiveTimetableResponse | null {
+    return load(STORAGE_KEYS.TIMETABLE, null);
+  },
+  saveAdaptiveTimetable(timetable: AdaptiveTimetableResponse): void {
+    save(STORAGE_KEYS.TIMETABLE, timetable);
+  },
+  updateTimetableBlockStatus(blockId: string, status: TimetableStatus): void {
+    const current = this.getAdaptiveTimetable();
+    if (!current) return;
+    const targetBlock = current.blocks.find((b) => b.id === blockId);
+    if (!targetBlock) return;
+
+    targetBlock.status = status;
+    save(STORAGE_KEYS.TIMETABLE, current);
+
+    // If block completed, record an immutable log into TimelineEntry ledger
+    if (status === 'completed') {
+      this.addTimelineEntry({
+        title: `Completed Timetable Task: ${targetBlock.activity}`,
+        category: targetBlock.category || 'Work',
+        timestampMillis: Date.now(),
+        durationMinutes: targetBlock.duration_minutes,
+        note: `Scheduled ${targetBlock.start} - ${targetBlock.end} | Priority: ${targetBlock.priority} ${targetBlock.goal ? `| Goal: ${targetBlock.goal}` : ''}`,
+        type: 'ACTIVITY',
+      });
+    }
+  },
+  deleteTimetableBlock(blockId: string): void {
+    const current = this.getAdaptiveTimetable();
+    if (!current) return;
+    current.blocks = current.blocks.filter((b) => b.id !== blockId);
+    save(STORAGE_KEYS.TIMETABLE, current);
+  },
   getUserContextString(): string {
     const now = new Date();
     const active = this.getActiveActivity();
@@ -1116,6 +1185,8 @@ export const storage = {
     const todayReview = this.getEveningReview();
     const captures = this.getAllCaptures().slice(0, 5);
     const journal = this.getJournalEntries().slice(0, 3);
+    const settings = this.getSettings();
+    const timetable = this.getAdaptiveTimetable();
     
     // Health Context Data
     const medications = this.getMedications().filter((m) => m.status === 'active');
@@ -1137,10 +1208,18 @@ export const storage = {
 CURRENT LOCAL TIME & DATE METADATA:
 - Current Date: ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (${todayDateStr})
 - Current Local Time: ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-- Unix Timestamp: ${now.getTime()}
+- Day Mode: ${settings.isWorkday !== false ? 'WORKDAY' : 'WEEK-OFF / REST & STUDY DAY'}
+- Configured Office Shift: ${settings.officeStartTime || '13:00'} - ${settings.officeEndTime || '22:00'}
+- Bedtime Target: ${settings.bedtime || '00:00'} | Wake Time: ${settings.wakeTime || '07:30'}
+
+USER LONG-TERM GOALS:
+${(settings.goals || []).map((g, i) => `${i + 1}. ${g}`).join('\n') || '1. Become an SDET / software testing career\n2. Complete ISTQB certification\n3. Build and improve PAIOS\n4. Master Playwright & Python automation'}
 
 ACTIVE SESSION / ACTIVITY:
 ${active ? `- Currently Active: "${active.activityName}" [Category: ${active.category}] | Started At: ${formatTime(active.startTimeMillis)} | Running Duration: ${Math.floor((now.getTime() - active.startTimeMillis) / 60000)} minutes` : '- No active session currently running.'}
+
+CURRENT ADAPTIVE TIMETABLE (${timetable ? timetable.dateString : 'None generated'}):
+${timetable && timetable.blocks.length > 0 ? timetable.blocks.map((b) => `  * [${b.start}–${b.end}] ${b.activity} (${b.category}) | Priority: ${b.priority} | Status: ${b.status} ${b.goal ? `| Goal: ${b.goal}` : ''}`).join('\n') : '  * No AI timetable generated for today yet.'}
 
 HEALTH & CLINICIAN CONTEXT:
 - Prescribing Doctors & Clinicians:

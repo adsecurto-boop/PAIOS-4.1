@@ -12,8 +12,8 @@ import {
   Play,
   Zap,
 } from 'lucide-react';
-import { NavTab, ActivityLog, Task, TimelineEntry, StudyCard, JournalEntry, MorningCheckIn, EveningReview, AiChatMessage, UserSettings, SearchResults, Medication, DoseEvent, DoseStatus, RefillInventory, VitalSign } from './types';
-import { PAIOSStorage } from './storage';
+import { NavTab, ActivityLog, Task, TimelineEntry, StudyCard, JournalEntry, MorningCheckIn, EveningReview, AiChatMessage, UserSettings, SearchResults, Medication, DoseEvent, DoseStatus, RefillInventory, VitalSign, DoctorContact, Appointment, AdaptiveTimetableResponse, TimetableStatus } from './types';
+import { PAIOSStorage, getTodayDateString } from './storage';
 import { TopHeaderBar } from './components/TopHeaderBar';
 import { MiniTimerPlayer } from './components/MiniTimerPlayer';
 import { StartActivityModal } from './components/StartActivityModal';
@@ -57,6 +57,8 @@ export const App: React.FC = () => {
   const [reviews, setReviews] = useState<EveningReview[]>([]);
   const [aiMessages, setAiMessages] = useState<AiChatMessage[]>([]);
   const [settings, setSettings] = useState<UserSettings>(PAIOSStorage.getSettings());
+  const [timetable, setTimetable] = useState<AdaptiveTimetableResponse | null>(PAIOSStorage.getAdaptiveTimetable());
+  const [isGeneratingTimetable, setIsGeneratingTimetable] = useState(false);
 
   // Health State
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -106,6 +108,7 @@ export const App: React.FC = () => {
     setVitalSigns(PAIOSStorage.getVitalSigns());
     setDoctors(PAIOSStorage.getDoctors());
     setAppointments(PAIOSStorage.getAppointments());
+    setTimetable(PAIOSStorage.getAdaptiveTimetable());
   };
 
   useEffect(() => {
@@ -265,9 +268,66 @@ export const App: React.FC = () => {
     reloadState();
   };
 
-  // Timeline
+  // Timeline & Adaptive Timetable
   const handleDeleteTimelineEntry = (id: number) => {
     PAIOSStorage.deleteTimelineEntry(id);
+    reloadState();
+  };
+
+  const handleGenerateTimetable = async (adaptationReason?: string) => {
+    setIsGeneratingTimetable(true);
+    const contextStr = PAIOSStorage.getUserContextString();
+    const now = new Date();
+    const currentTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const currentDateStr = getTodayDateString();
+
+    try {
+      const res = await fetch('/api/ai/generate-timeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userContext: contextStr,
+          currentTimeStr,
+          currentDateStr,
+          isWorkday: settings.isWorkday !== false,
+          officeStartTime: settings.officeStartTime || '13:00',
+          officeEndTime: settings.officeEndTime || '22:00',
+          bedtime: settings.bedtime || '00:00',
+          wakeTime: settings.wakeTime || '07:30',
+          adaptationReason,
+          customApiKey: settings.customApiKey,
+          modelName: settings.preferredModel,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && Array.isArray(data.blocks)) {
+        const responseObj: AdaptiveTimetableResponse = {
+          dateString: currentDateStr,
+          generatedAtTimeStr: currentTimeStr,
+          explanation: data.explanation || 'AI generated schedule',
+          blocks: data.blocks,
+        };
+        PAIOSStorage.saveAdaptiveTimetable(responseObj);
+        reloadState();
+      } else if (data.error) {
+        alert(`Timetable generation error: ${data.error}`);
+      }
+    } catch (err: any) {
+      console.error('Error generating timetable:', err);
+      alert(`Unable to connect to AI Timetable server: ${err.message || 'Error'}`);
+    } finally {
+      setIsGeneratingTimetable(false);
+    }
+  };
+
+  const handleUpdateTimetableBlockStatus = (blockId: string, status: TimetableStatus) => {
+    PAIOSStorage.updateTimetableBlockStatus(blockId, status);
+    reloadState();
+  };
+
+  const handleDeleteTimetableBlock = (blockId: string) => {
+    PAIOSStorage.deleteTimetableBlock(blockId);
     reloadState();
   };
 
@@ -547,7 +607,18 @@ export const App: React.FC = () => {
               )}
 
               {activeTab === NavTab.TIMELINE && (
-                <TimelineScreen timelineEntries={timelineEntries} onDeleteEntry={handleDeleteTimelineEntry} />
+                <TimelineScreen
+                  timelineEntries={timelineEntries}
+                  timetable={timetable}
+                  settings={settings}
+                  isGeneratingTimetable={isGeneratingTimetable}
+                  onGenerateTimetable={handleGenerateTimetable}
+                  onUpdateBlockStatus={handleUpdateTimetableBlockStatus}
+                  onDeleteBlock={handleDeleteTimetableBlock}
+                  onDeleteTimelineEntry={handleDeleteTimelineEntry}
+                  onStartActivity={handleStartActivity}
+                  onUpdateSettings={handleUpdateSettings}
+                />
               )}
 
               {activeTab === NavTab.TASKS && (

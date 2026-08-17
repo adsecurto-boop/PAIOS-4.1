@@ -168,14 +168,12 @@ app.post('/api/ai/chat', async (req, res) => {
       },
     });
 
-    let selectedModel = 'gemini-flash-latest';
+    const modelCandidates = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro'];
     if (modelName && typeof modelName === 'string') {
       if (modelName.includes('pro')) {
-        selectedModel = 'gemini-3.1-pro-preview';
-      } else if (modelName.includes('3.7')) {
-        selectedModel = 'gemini-3.7-flash';
+        modelCandidates.unshift('gemini-2.5-pro');
       } else {
-        selectedModel = 'gemini-flash-latest';
+        modelCandidates.unshift('gemini-2.5-flash');
       }
     }
 
@@ -211,41 +209,29 @@ ${userContext || 'No context available.'}
 `.trim();
 
     let fullText = '';
-    try {
-      const response = await ai.models.generateContent({
-        model: selectedModel,
-        contents: userText,
-        config: {
-          systemInstruction,
-          temperature: 0.7,
-        },
-      });
-      fullText = response.text || '';
-    } catch (firstErr: any) {
-      console.warn(`Primary Gemini model (${selectedModel}) call failed, retrying with gemini-flash-latest:`, firstErr?.message);
+    let lastError: any = null;
+
+    for (const targetModel of modelCandidates) {
       try {
-        const fallbackResponse = await ai.models.generateContent({
-          model: 'gemini-flash-latest',
+        const response = await ai.models.generateContent({
+          model: targetModel,
           contents: userText,
           config: {
             systemInstruction,
             temperature: 0.7,
           },
         });
-        fullText = fallbackResponse.text || '';
-      } catch (retryErr: any) {
-        console.error('Gemini API Fallback Retry Error:', retryErr);
-        res.json({
-          text: `Unable to process request with Gemini API: ${retryErr.message || 'API request failed'}. Please check your API key in Settings.`,
-          actionType: null,
-          actionPayloadJson: null,
-        });
-        return;
+        fullText = response.text || '';
+        if (fullText) break;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Model ${targetModel} call failed, trying next candidate:`, err?.message || err);
+        await new Promise((r) => setTimeout(r, 400));
       }
     }
 
     if (!fullText) {
-      fullText = 'I could not generate a response. Please check your network or API key settings.';
+      fullText = `AI services are currently experiencing high demand (${lastError?.message || '503 Unavailable'}). Please try again in a moment.`;
     }
 
     // Parse action block
@@ -274,6 +260,325 @@ ${userContext || 'No context available.'}
       text: `Error communicating with AI: ${err.message || 'Internal Server Error'}`,
       actionType: null,
       actionPayloadJson: null,
+    });
+  }
+});
+
+// Local Fallback Rule-Based Adaptive Timetable Generator
+function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 615;
+  const clean = timeStr.trim().toLowerCase();
+  let hours = 0;
+  let minutes = 0;
+
+  if (clean.includes('am') || clean.includes('pm')) {
+    const isPm = clean.includes('pm');
+    const parts = clean.replace(/am|pm/g, '').trim().split(':');
+    hours = parseInt(parts[0], 10) || 0;
+    minutes = parseInt(parts[1], 10) || 0;
+    if (isPm && hours < 12) hours += 12;
+    if (!isPm && hours === 12) hours = 0;
+  } else {
+    const parts = clean.split(':');
+    hours = parseInt(parts[0], 10) || 0;
+    minutes = parseInt(parts[1], 10) || 0;
+  }
+  return hours * 60 + minutes;
+}
+
+function formatMinutesToTime(mins: number): string {
+  const norm = (mins + 24 * 60) % (24 * 60);
+  const h = Math.floor(norm / 60);
+  const m = norm % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+}
+
+function generateLocalFallbackTimetable(params: {
+  currentTimeStr: string;
+  isWorkday: boolean;
+  officeStartTime: string;
+  officeEndTime: string;
+  bedtime: string;
+}) {
+  const {
+    currentTimeStr = '10:15',
+    isWorkday = true,
+    officeStartTime = '13:00',
+    officeEndTime = '22:00',
+    bedtime = '00:00',
+  } = params;
+
+  let cursor = parseTimeToMinutes(currentTimeStr);
+  let endDayMins = parseTimeToMinutes(bedtime);
+  if (endDayMins <= cursor) {
+    endDayMins += 24 * 60;
+  }
+
+  const officeStartMins = parseTimeToMinutes(officeStartTime);
+  const officeEndMins = parseTimeToMinutes(officeEndTime);
+
+  const blocks: any[] = [];
+  let blockIdx = 1;
+
+  const addBlock = (durationMins: number, activity: string, category: string, priority: string, reason: string, goal?: string) => {
+    if (cursor >= endDayMins) return;
+    const blockEnd = Math.min(cursor + durationMins, endDayMins);
+    const dur = blockEnd - cursor;
+    if (dur <= 0) return;
+
+    blocks.push({
+      id: `fallback_block_${blockIdx++}`,
+      start: formatMinutesToTime(cursor),
+      end: formatMinutesToTime(blockEnd),
+      duration_minutes: dur,
+      activity,
+      category,
+      goal: goal || (category === 'Study' ? 'ISTQB Certification' : category === 'Coding' ? 'Build PAIOS' : undefined),
+      priority,
+      reason,
+      status: 'planned',
+    });
+    cursor = blockEnd;
+  };
+
+  addBlock(15, 'Freshen up / Prepare for focus', 'Personal', 'RECOVERY', 'Transition into active routine from current time');
+
+  if (isWorkday) {
+    if (cursor < officeStartMins) {
+      const timeBeforeOffice = officeStartMins - cursor;
+      if (timeBeforeOffice >= 90) {
+        addBlock(75, 'ISTQB Focused Active Recall Study', 'Study', 'HIGH', 'Top-priority learning goal before office shift', 'ISTQB Certification');
+        addBlock(15, 'Short Rest Break', 'Break', 'RECOVERY', 'Mental recovery between study and preparation');
+      }
+      if (cursor < officeStartMins - 30) {
+        addBlock(30, 'Lunch & Office Preparation', 'Personal', 'RECOVERY', 'Nutritional intake and preparation for office shift');
+      }
+      if (cursor < officeStartMins) {
+        addBlock(officeStartMins - cursor, 'Commute / Transition to Office', 'Work', 'FIXED', 'Travel and shift check-in');
+      }
+    }
+
+    if (cursor < officeEndMins) {
+      const shiftDur = officeEndMins - cursor;
+      addBlock(shiftDur, 'Office Shift', 'Work', 'FIXED', 'Required office schedule commitment');
+    }
+
+    if (cursor < endDayMins) {
+      addBlock(30, 'Commute Home & Dinner', 'Personal', 'RECOVERY', 'Post-work recovery, family time, and meal');
+      if (endDayMins - cursor >= 90) {
+        addBlock(45, 'PAIOS Architecture & Testing', 'Coding', 'HIGH', 'Daily engineering sprint for career and skills', 'Build PAIOS');
+        addBlock(15, 'Short Rest Break', 'Break', 'RECOVERY', 'Relaxation break');
+      }
+    }
+  } else {
+    addBlock(90, 'ISTQB Active Recall & Mock Tests', 'Study', 'HIGH', 'Deep learning block using spaced repetition', 'ISTQB Certification');
+    addBlock(15, 'Hydration & Stretch Break', 'Break', 'RECOVERY', 'Short mental rest');
+    addBlock(45, 'Lunch & Family Time', 'Personal', 'RECOVERY', 'Nutritional meal and social relaxation');
+    addBlock(90, 'PAIOS Development & Automation', 'Coding', 'HIGH', 'Hands-on Playwright/Python engineering', 'Build PAIOS');
+    addBlock(15, 'Rest & Recovery Break', 'Break', 'RECOVERY', 'Recovery time');
+    addBlock(60, 'Playwright & Software Testing Skills', 'Testing', 'FLEXIBLE', 'Automation framework practice', 'SDET Career');
+    addBlock(45, 'Dinner & Recreation', 'Personal', 'RECOVERY', 'Evening relaxation with family');
+  }
+
+  if (endDayMins - cursor >= 45) {
+    const remainingBeforeWinddown = endDayMins - cursor - 45;
+    if (remainingBeforeWinddown > 0) {
+      addBlock(remainingBeforeWinddown, 'Flexible Personal Routine & Reading', 'Personal', 'OPTIONAL', 'Personal hobbies or light reading');
+    }
+    addBlock(15, 'Daily Evening Review & Tomorrow Prep', 'Personal', 'FLEXIBLE', 'Reflect on accomplishments and plan next day');
+    addBlock(30, 'Wind Down / Sleep Preparation', 'Personal', 'RECOVERY', 'Prepare mind and body for sleep at target bedtime');
+  } else if (endDayMins - cursor > 0) {
+    addBlock(endDayMins - cursor, 'Wind Down / Sleep Preparation', 'Personal', 'RECOVERY', 'Prepare for sleep at target bedtime');
+  }
+
+  return {
+    explanation: 'Generated using PAIOS adaptive local schedule engine (AI service busy/unavailable). Schedule starts strictly from current time and optimizes study, work, and recovery until bedtime.',
+    blocks,
+  };
+}
+
+// API Endpoint: Gemini Adaptive Timeline Generation
+app.post('/api/ai/generate-timeline', async (req, res) => {
+  try {
+    const {
+      userContext,
+      currentTimeStr = '10:15',
+      currentDateStr = new Date().toISOString().split('T')[0],
+      isWorkday = true,
+      officeStartTime = '13:00',
+      officeEndTime = '22:00',
+      bedtime = '00:00',
+      wakeTime = '07:30',
+      adaptationReason,
+      customApiKey,
+      modelName,
+    } = req.body;
+
+    const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      // Fallback local schedule generation when no API key is provided
+      const fallback = generateLocalFallbackTimetable({
+        currentTimeStr,
+        isWorkday,
+        officeStartTime,
+        officeEndTime,
+        bedtime,
+      });
+      res.json({
+        success: true,
+        dateString: currentDateStr,
+        generatedAtTimeStr: currentTimeStr,
+        explanation: 'Generated using local adaptive engine (No Gemini API Key provided).',
+        blocks: fallback.blocks,
+      });
+      return;
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+
+    const modelCandidates = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro'];
+    if (modelName && typeof modelName === 'string') {
+      if (modelName.includes('pro')) {
+        modelCandidates.unshift('gemini-2.5-pro');
+      } else {
+        modelCandidates.unshift('gemini-2.5-flash');
+      }
+    }
+
+    const systemInstruction = `
+You are the PAIOS (Personal AI Operating System) Adaptive Daily Timetable Engine.
+Your job is to generate a realistic, dynamic, adaptive daily timetable for the user starting strictly at the CURRENT TIME (${currentTimeStr}) and ending at BEDTIME (${bedtime}) on ${currentDateStr}.
+
+CRITICAL SCHEDULING CONSTRAINTS & BEHAVIORS:
+1. START FROM CURRENT TIME: The schedule MUST begin directly at the CURRENT TIME (${currentTimeStr}). NEVER schedule activities before ${currentTimeStr}.
+2. END AT BEDTIME: The schedule ends when reaching bedtime (${bedtime}).
+3. NO OVERLAPPING BLOCKS: Blocks must be strictly sequential (end time of block N = start time of block N+1).
+4. DAY TYPE & FIXED COMMITMENTS:
+   - Day Mode: ${isWorkday ? 'WORKDAY' : 'WEEK-OFF / REST & STUDY DAY'}.
+   ${isWorkday ? `- Office Shift is FIXED from ${officeStartTime} to ${officeEndTime}. Include commute/prep before and after.` : '- Today is a Week-Off! Prioritize deep ISTQB active recall study, PAIOS development, family time, and relaxation.'}
+   - Scheduled doctor appointments and medication dose times MUST be marked as "FIXED".
+5. RECOVERY & HUMAN WELLBEING:
+   - Do NOT fill every minute with work or study.
+   - Deliberately schedule short breaks (15m), meals (lunch/dinner), recovery time, family/social time, and a 30m wind-down routine before bedtime. Mark these as "RECOVERY".
+6. FOCUS & STUDY PRINCIPLES:
+   - For study (ISTQB certification, Playwright/Python automation, SDET skills), use realistic sessions of 45-90 minutes.
+   - Emphasize Active Recall, Spaced Repetition, practice questions, and reviewing previous material before new study.
+   - Never schedule continuous uninterrupted study over 90 minutes.
+7. GOAL-AWARE PRIORITIZATION & OVERFLOW DEFERRAL:
+   - Primary user goals: 1. SDET career advancement, 2. ISTQB Certification, 3. PAIOS development, 4. Playwright/Python automation.
+   - If there is not enough time remaining before bedtime, prioritize high-value tasks and mark remaining overflow tasks as "deferred" with a clear reason.
+8. DYNAMIC ADAPTATION REASON:
+   ${adaptationReason ? `- Adaptation context provided: "${adaptationReason}". Re-optimize the remaining timetable from ${currentTimeStr} accordingly.` : '- Generating full daily timetable starting now.'}
+
+OUTPUT FORMAT:
+Respond ONLY with a valid JSON object matching this structure (no markdown formatting outside JSON):
+{
+  "explanation": "Why this plan? (2-3 concise sentences explaining task prioritization, break placement, and any deferred tasks)",
+  "blocks": [
+    {
+      "id": "block_1",
+      "start": "10:15",
+      "end": "10:30",
+      "duration_minutes": 15,
+      "activity": "Freshen up / prepare",
+      "category": "Personal",
+      "goal": "Personal Routine",
+      "priority": "RECOVERY",
+      "reason": "Transition into morning focus state",
+      "status": "planned"
+    }
+  ]
+}
+
+Priority MUST be one of: "FIXED", "HIGH", "FLEXIBLE", "OPTIONAL", "RECOVERY".
+Status MUST be one of: "planned", "in_progress", "completed", "skipped", "delayed", "rescheduled", "deferred".
+Category MUST be one of: "Work", "Study", "Coding", "Testing", "Personal", "Exercise", "Break", "Health", "Other".
+`.trim();
+
+    const promptText = `
+Generate the adaptive daily timetable from CURRENT TIME (${currentTimeStr}) to BEDTIME (${bedtime}) for date ${currentDateStr}.
+
+PAIOS Context & User State:
+${userContext}
+`.trim();
+
+    let resultJsonText = '';
+    let lastError: any = null;
+
+    for (const targetModel of modelCandidates) {
+      try {
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents: promptText,
+          config: {
+            systemInstruction,
+            temperature: 0.3,
+            responseMimeType: 'application/json',
+          },
+        });
+        resultJsonText = response.text || '';
+        if (resultJsonText) break;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Timetable generation on model ${targetModel} failed, trying candidate fallback:`, err?.message || err);
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
+
+    if (!resultJsonText) {
+      console.warn('All Gemini AI model attempts failed. Executing local rule-based timetable engine fallback.');
+      const fallback = generateLocalFallbackTimetable({
+        currentTimeStr,
+        isWorkday,
+        officeStartTime,
+        officeEndTime,
+        bedtime,
+      });
+      res.json({
+        success: true,
+        dateString: currentDateStr,
+        generatedAtTimeStr: currentTimeStr,
+        explanation: fallback.explanation,
+        blocks: fallback.blocks,
+      });
+      return;
+    }
+
+    // Clean JSON response
+    const jsonMatch = resultJsonText.match(/\{[\s\S]*\}/);
+    const cleanJson = jsonMatch ? jsonMatch[0] : resultJsonText;
+    const parsedData = JSON.parse(cleanJson);
+
+    res.json({
+      success: true,
+      dateString: currentDateStr,
+      generatedAtTimeStr: currentTimeStr,
+      explanation: parsedData.explanation || 'AI generated adaptive timetable based on current time and goals.',
+      blocks: Array.isArray(parsedData.blocks) ? parsedData.blocks : [],
+    });
+  } catch (err: any) {
+    console.error('Timeline Generation Error, using local fallback:', err);
+    const fallback = generateLocalFallbackTimetable({
+      currentTimeStr: req.body.currentTimeStr || '10:15',
+      isWorkday: req.body.isWorkday !== false,
+      officeStartTime: req.body.officeStartTime || '13:00',
+      officeEndTime: req.body.officeEndTime || '22:00',
+      bedtime: req.body.bedtime || '00:00',
+    });
+    res.json({
+      success: true,
+      dateString: req.body.currentDateStr || new Date().toISOString().split('T')[0],
+      generatedAtTimeStr: req.body.currentTimeStr || '10:15',
+      explanation: fallback.explanation,
+      blocks: fallback.blocks,
     });
   }
 });
