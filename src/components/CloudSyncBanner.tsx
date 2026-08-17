@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, LogOut, RefreshCw, Sparkles, ShieldCheck, Mail, UserCheck, ArrowRight, Lock, CheckCircle2, AlertTriangle, User } from 'lucide-react';
+import { Cloud, LogOut, RefreshCw, Sparkles, ShieldCheck, Mail, UserCheck, ArrowRight, Lock, CheckCircle2, AlertTriangle, User, ExternalLink, Smartphone } from 'lucide-react';
 import {
   auth,
   signInWithGoogle,
+  signInWithSystemBrowserRedirect,
   signInWithGuestSync,
   signUpWithEmail,
   signInWithEmail,
@@ -388,14 +389,14 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
           {authMethod === 'google' ? (
             <div className="space-y-3">
               <p className="text-xs text-slate-300 leading-relaxed">
-                Connect your Google Account for free, secure, automatic Firestore data synchronization across all your web browser sessions.
+                Connect your Google Account for free, secure, automatic Firestore data synchronization across all your web browser sessions & Android app.
               </p>
 
-              <div className="flex flex-wrap items-center gap-3 pt-1">
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
                 <button
                   onClick={handleSignInGoogle}
                   disabled={loading}
-                  className="px-6 py-2.5 bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2.5"
+                  className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -403,17 +404,45 @@ export const CloudSyncBanner: React.FC<CloudSyncBannerProps> = ({ onSyncComplete
                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                   </svg>
-                  <span>{loading ? 'Connecting Google Account...' : 'Sign in with Google'}</span>
+                  <span>{loading ? 'Connecting...' : 'Sign in with Google'}</span>
+                </button>
+
+                <button
+                  onClick={() => signInWithSystemBrowserRedirect()}
+                  type="button"
+                  className="px-4 py-2.5 bg-indigo-950/80 hover:bg-indigo-900/90 text-indigo-300 font-bold text-xs rounded-xl border border-indigo-700/80 transition-all flex items-center gap-1.5 shadow"
+                  title="Opens login in your default system web browser to prevent WebView restrictions"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Launch System Browser Auth</span>
                 </button>
 
                 <button
                   onClick={handleGuestSignIn}
                   disabled={loading}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold text-xs rounded-xl border border-slate-700 transition-all flex items-center gap-1.5"
+                  className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold text-xs rounded-xl border border-slate-700 transition-all flex items-center gap-1.5"
                 >
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  <span>Instant Guest Sync</span>
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Guest Sync</span>
                 </button>
+              </div>
+
+              <div className="mt-3 p-3 bg-slate-900/90 border border-indigo-900/50 rounded-xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2.5">
+                  <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className="text-slate-300 text-[11px]">
+                    <span className="font-bold text-white block">Dedicated Android App Ready</span>
+                    <span>Syncs with the exact same Firestore database schema (`user_data`) seamlessly across phone & web.</span>
+                  </div>
+                </div>
+                <a
+                  href="/manifest.json"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2.5 py-1 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded text-[10px] font-mono hover:bg-emerald-900 transition-colors shrink-0"
+                >
+                  Android Manifest
+                </a>
               </div>
             </div>
           ) : authMethod === 'email' ? (

@@ -1,0 +1,109 @@
+pipeline {
+    agent any
+
+    environment {
+        GITHUB_TOKEN = credentials('github-pat-token')
+        REPO_OWNER   = 'adsecurto-boop'
+        REPO_NAME    = 'PAIOS-4.1'
+        // Ensures JAVA_HOME and ANDROID_HOME are referenced if needed
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    triggers {
+        githubPush()
+        pollSCM('H/5 * * * *')
+    }
+
+    stages {
+        stage('Notify GitHub - Pending') {
+            steps {
+                script {
+                    updateGitHubCommitStatus('PENDING', 'Android APK build in progress...')
+                }
+            }
+        }
+
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install Node Dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Build Web Assets & Sync Capacitor') {
+            steps {
+                bat 'npm run build'
+                bat 'npx cap sync android'
+            }
+        }
+
+        stage('Assemble Android APK') {
+            steps {
+                dir('android') {
+                    bat 'gradlew.bat assembleRelease'
+                }
+            }
+        }
+
+        stage('Archive Android APK Artifacts') {
+            steps {
+                archiveArtifacts artifacts: 'android/app/build/outputs/apk/**/*.apk', allowEmptyArchive: false
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                updateGitHubCommitStatus('SUCCESS', 'Android APK build completed successfully!')
+            }
+            echo 'PAIOS Android Release APK Built Successfully.'
+        }
+        failure {
+            script {
+                updateGitHubCommitStatus('FAILURE', 'Android build failed.')
+            }
+            echo 'PAIOS Android Build Failed.'
+        }
+    }
+}
+
+void updateGitHubCommitStatus(String state, String description) {
+    def context = 'Jenkins/PAIOS-Android'
+    def commitSha = env.GIT_COMMIT
+    if (!commitSha) {
+        commitSha = bat(script: 'git rev-parse HEAD', returnStdout: true).trim()
+    }
+    
+    if (env.GITHUB_TOKEN && commitSha) {
+        def targetUrl = "${env.BUILD_URL}console"
+        def payload = """{
+            "state": "${state.toLowerCase()}",
+            "target_url": "${targetUrl}",
+            "description": "${description}",
+            "context": "${context}"
+        }"""
+        
+        try {
+            bat """
+                curl -X POST ^
+                -H "Authorization: token %GITHUB_TOKEN%" ^
+                -H "Accept: application/vnd.github.v3+json" ^
+                https://api.github.com/repos/${env.REPO_OWNER}/${env.REPO_NAME}/statuses/${commitSha} ^
+                -d "${payload.replace('\n', '').replace('"', '\\"')}"
+            """
+        } catch (Exception e) {
+            echo "Failed to send status update to GitHub: ${e.message}"
+        }
+    }
+}

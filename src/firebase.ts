@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -28,6 +29,19 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+// Listen for system browser redirect results on initial load
+if (typeof window !== 'undefined') {
+  getRedirectResult(auth)
+    .then((result) => {
+      if (result?.user) {
+        console.log('Successfully authenticated via system browser redirect:', result.user.email);
+      }
+    })
+    .catch((err) => {
+      console.warn('System browser redirect result error:', err);
+    });
+}
 
 // Initialize Firestore targeting applet database ID
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
@@ -96,6 +110,11 @@ export async function signInWithGoogle(): Promise<PaiosUser> {
     };
   } catch (err: any) {
     console.error('Google Popup Sign In Error:', err);
+    if (err.code === 'auth/disallowed-webview' || err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user') {
+      // Fallback automatically to system browser redirect
+      await signInWithSystemBrowserRedirect();
+      throw new Error('Redirecting to system browser for authentication...');
+    }
     if (err.code === 'auth/unauthorized-domain') {
       throw new Error(`UNAUTHORIZED_DOMAIN|${window.location.hostname}`);
     }
@@ -104,6 +123,16 @@ export async function signInWithGoogle(): Promise<PaiosUser> {
     }
     throw new Error(err.message || 'Google Sign In failed');
   }
+}
+
+// Launch System Browser Authentication
+export async function signInWithSystemBrowserRedirect(): Promise<void> {
+  // If running inside an embedded iframe/webview, open in system browser window
+  if (typeof window !== 'undefined' && window.self !== window.top) {
+    window.open(window.location.href, '_blank');
+    return;
+  }
+  await signInWithRedirect(auth, googleProvider);
 }
 
 export async function signUpWithEmail(email: string, pass: string, name?: string): Promise<PaiosUser> {
